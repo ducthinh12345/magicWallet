@@ -1,0 +1,336 @@
+{
+ "version": 1,
+ "_note": "packages chưa kiểm chứng trên máy thật. patterns rỗng = dùng parser chung. Thêm tổ chức mới chỉ cần sửa file này (NFR-14).",
+ "smsApps": [
+  "com.google.android.apps.messaging",
+  "com.samsung.android.messaging",
+  "com.android.mms"
+ ],
+ "institutions": [
+  {
+   "id": "vcb",
+   "name": "Vietcombank",
+   "kind": "bank",
+   "packages": [
+    "com.VCB"
+   ],
+   "senders": [
+    "VIETCOMBANK",
+    "Vietcombank"
+   ],
+   "patterns": []
+  },
+  {
+   "id": "bidv",
+   "name": "BIDV",
+   "kind": "bank",
+   "packages": [
+    "com.vnpay.bidv"
+   ],
+   "senders": [
+    "BIDV",
+    "BIDV"
+   ],
+   "patterns": []
+  },
+  {
+   "id": "vietinbank",
+   "name": "VietinBank",
+   "kind": "bank",
+   "packages": [
+    "com.vietinbank.ipay"
+   ],
+   "senders": [
+    "VIETINBANK",
+    "VietinBank"
+   ],
+   "patterns": []
+  },
+  {
+   "id": "agribank",
+   "name": "Agribank",
+   "kind": "bank",
+   "packages": [
+    "com.vnpay.Agribank3g"
+   ],
+   "senders": [
+    "AGRIBANK",
+    "Agribank"
+   ],
+   "patterns": []
+  },
+  {
+   "id": "mb",
+   "name": "MB Bank",
+   "kind": "bank",
+   "packages": [
+    "com.mbmobile"
+   ],
+   "senders": [
+    "MBBANK",
+    "MB Bank"
+   ],
+   "patterns": []
+  },
+  {
+   "id": "tcb",
+   "name": "Techcombank",
+   "kind": "bank",
+   "packages": [
+    "vn.com.techcombank.bb.app"
+   ],
+   "senders": [
+    "TECHCOMBANK",
+    "Techcombank"
+   ],
+   "patterns": []
+  },
+  {
+   "id": "vpbank",
+   "name": "VPBank",
+   "kind": "bank",
+   "packages": [
+    "com.vnpay.vpbankonline"
+   ],
+   "senders": [
+    "VPBANK",
+    "VPBank"
+   ],
+   "patterns": []
+  },
+  {
+   "id": "acb",
+   "name": "ACB",
+   "kind": "bank",
+   "packages": [
+    "mobile.acb.com.vn"
+   ],
+   "senders": [
+    "ACB",
+    "ACB"
+   ],
+   "patterns": []
+  },
+  {
+   "id": "tpbank",
+   "name": "TPBank",
+   "kind": "bank",
+   "packages": [
+    "com.tpb.mb.gprsandroid"
+   ],
+   "senders": [
+    "TPBANK",
+    "TPBank"
+   ],
+   "patterns": []
+  },
+  {
+   "id": "sacombank",
+   "name": "Sacombank",
+   "kind": "bank",
+   "packages": [
+    "com.sacombank.ewallet"
+   ],
+   "senders": [
+    "SACOMBANK",
+    "Sacombank"
+   ],
+   "patterns": []
+  },
+  {
+   "id": "vib",
+   "name": "VIB",
+   "kind": "bank",
+   "packages": [
+    "com.vib.myvib2"
+   ],
+   "senders": [
+    "VIB",
+    "VIB"
+   ],
+   "patterns": []
+  },
+  {
+   "id": "hdbank",
+   "name": "HDBank",
+   "kind": "bank",
+   "packages": [
+    "com.vnpay.hdbank"
+   ],
+   "senders": [
+    "HDBANK",
+    "HDBank"
+   ],
+   "patterns": []
+  },
+  {
+   "id": "msb",
+   "name": "MSB",
+   "kind": "bank",
+   "packages": [
+    "vn.com.msb.smartBanking"
+   ],
+   "senders": [
+    "MSB",
+    "MSB"
+   ],
+   "patterns": []
+  },
+  {
+   "id": "lpbank",
+   "name": "LPBank",
+   "kind": "bank",
+   "packages": [
+    "vn.com.lienvietpostbank.mobilebanking"
+   ],
+   "senders": [
+    "LPBANK",
+    "LPBank"
+   ],
+   "patterns": []
+  },
+  {
+   "id": "timo",
+   "name": "Timo",
+   "kind": "bank",
+   "packages": [
+    "io.lifestyle.plus"
+   ],
+   "senders": [
+    "TIMO",
+    "Timo"
+   ],
+   "patterns": []
+  },
+  {
+   "id": "cake",
+   "name": "Cake",
+   "kind": "bank",
+   "packages": [
+    "xyz.be.cake"
+   ],
+   "senders": [
+    "CAKE",
+    "Cake"
+   ],
+   "patterns": []
+  },
+  {
+   "id": "tnex",
+   "name": "TNEX",
+   "kind": "bank",
+   "packages": [
+    "vn.tnex.app"
+   ],
+   "senders": [
+    "TNEX",
+    "TNEX"
+   ],
+   "patterns": []
+  },
+  {
+   "id": "momo",
+   "name": "MoMo",
+   "kind": "ewallet",
+   "packages": [
+    "com.mservice.momotransfer"
+   ],
+   "senders": [
+    "MOMO",
+    "MoMo"
+   ],
+   "patterns": []
+  },
+  {
+   "id": "zalopay",
+   "name": "ZaloPay",
+   "kind": "ewallet",
+   "packages": [
+    "vn.com.vng.zalopay"
+   ],
+   "senders": [
+    "ZALOPAY",
+    "ZaloPay"
+   ],
+   "patterns": []
+  },
+  {
+   "id": "vnpay",
+   "name": "VNPAY",
+   "kind": "ewallet",
+   "packages": [
+    "vn.vnpay.vnpaywallet"
+   ],
+   "senders": [
+    "VNPAY",
+    "VNPAY"
+   ],
+   "patterns": []
+  },
+  {
+   "id": "shopeepay",
+   "name": "ShopeePay",
+   "kind": "ewallet",
+   "packages": [
+    "com.beeasy.toppay"
+   ],
+   "senders": [
+    "SHOPEEPAY",
+    "ShopeePay"
+   ],
+   "patterns": []
+  },
+  {
+   "id": "viettelmoney",
+   "name": "Viettel Money",
+   "kind": "ewallet",
+   "packages": [
+    "com.bplus.vtpay"
+   ],
+   "senders": [
+    "VIETTELMONEY",
+    "Viettel Money"
+   ],
+   "patterns": []
+  },
+  {
+   "id": "payoo",
+   "name": "Payoo",
+   "kind": "ewallet",
+   "packages": [
+    "vn.payoo.wallet"
+   ],
+   "senders": [
+    "PAYOO",
+    "Payoo"
+   ],
+   "patterns": []
+  },
+  {
+   "id": "vnptmoney",
+   "name": "VNPT Money",
+   "kind": "ewallet",
+   "packages": [
+    "com.vnpt.vnptpay"
+   ],
+   "senders": [
+    "VNPTMONEY",
+    "VNPT Money"
+   ],
+   "patterns": []
+  },
+  {
+   "id": "paypal",
+   "name": "PayPal",
+   "kind": "ewallet",
+   "packages": [
+    "com.paypal.android.p2pmobile"
+   ],
+   "senders": [
+    "PAYPAL",
+    "PayPal"
+   ],
+   "patterns": []
+  }
+ ]
+}
