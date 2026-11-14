@@ -129,7 +129,8 @@ flutter_launcher_icons:
   android: true
   ios: true
   image_path: assets/icon/full.png
-  adaptive_icon_background: "#00796B"
+  adaptive_icon_background: "#00796B" # khớp tông nền gradient của full.svg
   adaptive_icon_foreground: assets/icon/foreground.png
+  adaptive_icon_foreground_inset: 0 # SVG đã thu vào vùng an toàn 66%, không cần thêm lề
   remove_alpha_ios: true
   min_sdk_android: 26

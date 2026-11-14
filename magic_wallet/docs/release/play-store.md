@@ -52,6 +52,15 @@ flutter build appbundle --release \
   --dart-define=GOOGLE_SERVER_CLIENT_ID=155791156180-v34sldhq71c71lbuob9q9fffroeeu22l.apps.googleusercontent.com
 ```
 
+## E2. Cấp Pro trọn đời cho máy thử nghiệm nội bộ
+Bản **debug** cài qua cáp có thể bật Pro trọn đời không cần mua:
+```sh
+flutter build apk --debug --dart-define=GOOGLE_SERVER_CLIENT_ID=<client-web> --dart-define=DEV_PRO_LIFETIME=true
+adb install -r build/app/outputs/flutter-apk/app-debug.apk
+```
+Cờ bị khoá bằng `kDebugMode` (`lib/pro/pro.dart`): bản release/AAB **không bao giờ** nhận cờ này dù có truyền vào.
+Với bản tải từ CH Play, dùng *Thử nghiệm giấy phép* (mua thử miễn phí) hoặc **mã khuyến mãi** của Play cho `pro_lifetime`.
+
 ## F. Trang thông tin – bản nháp
 **Tên**: Ví Ma Thuật – Chi tiêu tự động
 **Mô tả ngắn (≤ 80 ký tự)**: Ghi chi tiêu tự động từ thông báo ngân hàng. Dữ liệu ở máy bạn.

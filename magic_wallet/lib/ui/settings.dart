@@ -19,72 +19,48 @@ class MoreTab extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     void go(Widget w) => Navigator.push(context, MaterialPageRoute(builder: (_) => w));
-    return ListView(
+    // Một mục cài đặt: icon màu trong ô bo góc, tên, mũi tên.
+    Widget item(IconData icon, Color color, String title, VoidCallback onTap, {String? subtitle}) => ListTile(
+      leading: IconBadge(size: 40, color: color, child: Icon(icon, color: color, size: 21)),
+      title: Text(title, style: const TextStyle(fontWeight: FontWeight.w600)),
+      subtitle: subtitle == null ? null : Text(subtitle),
+      trailing: const Icon(Icons.chevron_right),
+      onTap: onTap,
+    );
+    Widget group(String title, List<Widget> items) => Column(
+      crossAxisAlignment: CrossAxisAlignment.stretch,
       children: [
-        ListTile(
-          leading: const Icon(Icons.workspace_premium_outlined),
-          title: const Text('Ví Ma Thuật Pro'),
-          subtitle: FutureBuilder<ProState>(
-            future: ProState.load(Services.I.db),
-            builder: (context, st) {
-              final now = DateTime.now();
-              final p = st.data;
-              if (p == null) return const SizedBox();
-              return Text(p.purchased
-                  ? 'Đang dùng Pro ${p.owned == 'lifetime' ? 'trọn đời' : 'gói năm'}'
-                  : p.trialActive(now)
-                  ? 'Dùng thử còn ${p.trialDaysLeft(now)} ngày'
-                  : 'Bản miễn phí — xem quyền lợi Pro');
-            },
-          ),
-          onTap: () => go(const ProScreen()),
+        Padding(
+          padding: const EdgeInsets.fromLTRB(8, 14, 0, 4),
+          child: Text(title, style: Theme.of(context).textTheme.labelLarge?.copyWith(fontWeight: FontWeight.w700)),
         ),
-        const Divider(),
-        ListTile(
-          leading: const Icon(Icons.account_balance_wallet_outlined),
-          title: const Text('Ví & đối soát'),
-          onTap: () => go(const WalletsScreen()),
-        ),
-        ListTile(
-          leading: const Icon(Icons.category_outlined),
-          title: const Text('Danh mục'),
-          onTap: () => go(const CategoriesScreen()),
-        ),
-        ListTile(
-          leading: const Icon(Icons.savings_outlined),
-          title: const Text('Ngân sách'),
-          onTap: () => go(const BudgetsScreen()),
-        ),
-        ListTile(
-          leading: const Icon(Icons.event_repeat),
-          title: const Text('Giao dịch định kỳ'),
-          onTap: () => go(const RecurringScreen()),
-        ),
-        ListTile(leading: const Icon(Icons.rule), title: const Text('Quy tắc phân loại'), onTap: () => go(const RulesScreen())),
-        const Divider(),
-        ListTile(leading: const Icon(Icons.bolt), title: const Text('Ghi tự động'), onTap: () => go(const SourcesScreen())),
-        ListTile(
-          leading: const Icon(Icons.cloud_outlined),
-          title: const Text('Google Sheets & sao lưu'),
-          onTap: () => go(const GoogleScreen()),
-        ),
-        ListTile(leading: const Icon(Icons.lock_outline), title: const Text('Bảo mật'), onTap: () => go(const SecurityScreen())),
-        ListTile(leading: const Icon(Icons.tune), title: const Text('Cài đặt chung'), onTap: () => go(const GeneralScreen())),
-        const Divider(),
-        ListTile(
-          leading: const Icon(Icons.table_view_outlined),
-          title: const Text('Xuất CSV toàn bộ giao dịch'),
-          onTap: () => exportTxnsCsv(context, name: 'tat-ca'),
-        ),
-        ListTile(
-          leading: const Icon(Icons.data_object),
-          title: const Text('Xuất JSON toàn bộ dữ liệu'),
-          onTap: () => exportAllJson(context),
-        ),
-        ListTile(
-          leading: const Icon(Icons.delete_forever_outlined, color: expenseColor),
-          title: const Text('Xoá toàn bộ dữ liệu trên máy'),
-          onTap: () async {
+        Card(clipBehavior: Clip.antiAlias, child: Column(children: items)),
+      ],
+    );
+    return ListView(
+      padding: const EdgeInsets.fromLTRB(16, 4, 16, 24),
+      children: [
+        _ProBanner(onTap: () => go(const ProScreen())),
+        group('Quản lý tiền', [
+          item(Icons.account_balance_wallet_outlined, const Color(0xFF00897B), 'Ví & đối soát', () => go(const WalletsScreen())),
+          item(Icons.category_outlined, const Color(0xFF8E24AA), 'Danh mục', () => go(const CategoriesScreen())),
+          item(Icons.savings_outlined, const Color(0xFFF9A825), 'Ngân sách', () => go(const BudgetsScreen())),
+          item(Icons.event_repeat, const Color(0xFF1E88E5), 'Giao dịch định kỳ', () => go(const RecurringScreen())),
+          item(Icons.rule, const Color(0xFF6D4C41), 'Quy tắc phân loại', () => go(const RulesScreen())),
+        ]),
+        group('Tự động & đồng bộ', [
+          item(Icons.bolt, const Color(0xFFEF6C00), 'Ghi tự động', () => go(const SourcesScreen()),
+              subtitle: 'Thông báo ngân hàng, email, sao kê'),
+          item(Icons.cloud_outlined, const Color(0xFF1E88E5), 'Google Sheets & sao lưu', () => go(const GoogleScreen())),
+        ]),
+        group('Cài đặt', [
+          item(Icons.lock_outline, const Color(0xFF43A047), 'Bảo mật', () => go(const SecurityScreen())),
+          item(Icons.tune, const Color(0xFF546E7A), 'Cài đặt chung', () => go(const GeneralScreen())),
+        ]),
+        group('Dữ liệu của bạn', [
+          item(Icons.table_view_outlined, const Color(0xFF2E7D32), 'Xuất CSV toàn bộ giao dịch', () => exportTxnsCsv(context, name: 'tat-ca')),
+          item(Icons.data_object, const Color(0xFF546E7A), 'Xuất JSON toàn bộ dữ liệu', () => exportAllJson(context)),
+          item(Icons.delete_forever_outlined, expenseColor, 'Xoá toàn bộ dữ liệu trên máy', () async {
             if (await confirm(
               context,
               'Xoá vĩnh viễn mọi ví, giao dịch, cài đặt trên máy này? Google Sheet và bản sao lưu trên Drive không bị xoá.',
@@ -93,8 +69,9 @@ class MoreTab extends StatelessWidget {
               await Services.I.wipeAll();
               if (context.mounted) toast(context, 'Đã xoá toàn bộ dữ liệu');
             }
-          },
-        ),
+          }),
+        ]),
+        const SizedBox(height: 8),
         const AboutListTile(
           applicationName: 'Ví Ma Thuật',
           applicationVersion: '1.0.0',
@@ -108,6 +85,53 @@ class MoreTab extends StatelessWidget {
       ],
     );
   }
+}
+
+/// Banner Pro nổi bật ở đầu tab Thêm, nội dung theo trạng thái (miễn phí / dùng thử / đã mua).
+class _ProBanner extends StatelessWidget {
+  final VoidCallback onTap;
+  const _ProBanner({required this.onTap});
+
+  @override
+  Widget build(BuildContext context) => FutureBuilder<ProState>(
+    future: ProState.load(Services.I.db),
+    builder: (context, st) {
+      final now = DateTime.now();
+      final p = st.data;
+      final text = p == null
+          ? ''
+          : p.purchased
+          ? 'Bạn đang dùng Pro ${p.owned == 'lifetime' ? 'trọn đời' : 'gói năm'}. Cảm ơn bạn!'
+          : p.trialActive(now)
+          ? 'Đang dùng thử — còn ${p.trialDaysLeft(now)} ngày'
+          : 'Ghi tự động mọi ngân hàng, báo cáo năm, sao lưu tự động…';
+      return Material(
+        borderRadius: BorderRadius.circular(22),
+        clipBehavior: Clip.antiAlias,
+        child: InkWell(
+          onTap: onTap,
+          child: Ink(
+            decoration: const BoxDecoration(
+              gradient: LinearGradient(colors: [Color(0xFFFFB300), Color(0xFFFF7043)], begin: Alignment.topLeft, end: Alignment.bottomRight),
+            ),
+            padding: const EdgeInsets.all(18),
+            child: Row(children: [
+              const CircleAvatar(radius: 24, backgroundColor: Colors.white24, child: Icon(Icons.workspace_premium, color: Colors.white, size: 28)),
+              const SizedBox(width: 14),
+              Expanded(
+                child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+                  const Text('Ví Ma Thuật Pro', style: TextStyle(color: Colors.white, fontSize: 18, fontWeight: FontWeight.w800)),
+                  const SizedBox(height: 2),
+                  Text(text, style: const TextStyle(color: Colors.white)),
+                ]),
+              ),
+              const Icon(Icons.chevron_right, color: Colors.white),
+            ]),
+          ),
+        ),
+      );
+    },
+  );
 }
 
 class GeneralScreen extends StatefulWidget {

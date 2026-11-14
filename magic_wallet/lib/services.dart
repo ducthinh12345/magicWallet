@@ -15,6 +15,7 @@ import 'core/money.dart';
 import 'core/periods.dart';
 import 'data/database.dart';
 import 'data/repo.dart';
+import 'demo.dart';
 import 'pro/billing.dart';
 import 'pro/pro.dart';
 import 'reports/report.dart';
@@ -166,6 +167,7 @@ class Services {
     final pipeline = CapturePipeline(db, repo, catalog);
     final s = Services._(db, repo, catalog, pipeline, GoogleService(db, repo, pipeline), Notifier(), secure);
     await s.notifier.init();
+    await seedDemo(db, repo); // chỉ khi build với DEMO_SEED=true
     await repo.purgeExpired(DateTime.now());
     final created = await repo.runRecurring(DateTime.now());
     if (created > 0) {

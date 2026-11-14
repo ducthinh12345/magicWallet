@@ -1,9 +1,15 @@
+import 'package:flutter/foundation.dart' show kDebugMode;
+
 import '../data/database.dart';
 
 /// Mã sản phẩm tạo trên Play Console (Kiếm tiền › Sản phẩm). Đổi ở đây thì phải đổi cả trên Play.
 const kProYearly = 'pro_yearly'; // gói đăng ký năm (199.000đ đề xuất)
 const kProLifetime = 'pro_lifetime'; // sản phẩm mua một lần (499.000đ đề xuất)
 const trialDays = 14;
+
+/// Cấp Pro trọn đời cho máy phát triển/thử nghiệm nội bộ: chỉ bản DEBUG build với --dart-define=DEV_PRO_LIFETIME=true.
+/// Bản release luôn là false (kDebugMode là hằng false → trình biên dịch loại bỏ), nên người dùng CH Play không bao giờ có.
+const bool devProLifetime = kDebugMode && bool.fromEnvironment('DEV_PRO_LIFETIME');
 
 /// Giới hạn bản miễn phí (mục 1.4). Bảo mật, xuất dữ liệu, sao lưu thủ công không bao giờ bị khoá.
 class FreeLimits {
@@ -33,7 +39,7 @@ class ProState {
   }
 
   static Future<ProState> load(AppDb db) async => ProState(
-        owned: await db.getSetting('pro_owned') ?? '',
+        owned: devProLifetime ? 'lifetime' : (await db.getSetting('pro_owned') ?? ''),
         trialStart: DateTime.tryParse(await db.getSetting('pro_trial_start') ?? ''),
       );
 }

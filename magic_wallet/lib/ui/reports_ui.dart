@@ -124,16 +124,18 @@ class _ReportView extends StatelessWidget {
             ),
           ],
         ),
-        // 1) Tiêu bao nhiêu
+        // 1) Tiêu bao nhiêu: hai thẻ màu Thu/Chi, chi tiết bên dưới.
+        Row(children: [
+          Expanded(child: _StatCard('Tổng thu', t.income, incomeColor, Icons.south_west)),
+          const SizedBox(width: 10),
+          Expanded(child: _StatCard('Tổng chi', t.expense, expenseColor, Icons.north_east)),
+        ]),
         Card(
           child: Padding(
             padding: const EdgeInsets.all(16),
             child: Column(
               children: [
-                _kv(context, 'Tổng thu', Money(t.income, type: 'income')),
-                _kv(context, 'Tổng chi', Money(t.expense, type: 'expense')),
-                const Divider(),
-                _kv(context, 'Chênh lệch', Money(t.net.abs(), type: t.net >= 0 ? 'income' : 'expense')),
+                _kv(context, 'Chênh lệch', Money(t.net.abs(), type: t.net >= 0 ? 'income' : 'expense', style: const TextStyle(fontWeight: FontWeight.w700))),
                 if (r.period.type != PeriodType.week && t.savingsRate != null)
                   _kv(context, 'Tỷ lệ tiết kiệm', Text('${(t.savingsRate! * 100).round()}%')),
                 if (change != null) _kv(context, 'Chi so với kỳ trước', _pct(change)),
@@ -153,35 +155,56 @@ class _ReportView extends StatelessWidget {
         // 2) Tiêu vào đâu
         _section(context, 'Cơ cấu chi theo danh mục'),
         if (r.byCategory.isEmpty) const Text('Chưa có khoản chi nào trong kỳ.'),
-        if (r.period.type == PeriodType.month && r.byCategory.isNotEmpty)
-          Center(
-            child: SizedBox(
-              width: 180,
-              height: 180,
-              child: CustomPaint(
-                painter: _Donut([for (final e in r.byCategory) (e.value, Color(cats.byId[e.key]?.color ?? 0xFF9E9E9E))]),
-              ),
-            ),
-          ),
-        for (final e in (r.period.type == PeriodType.week ? r.byCategory.take(5) : r.byCategory))
-          InkWell(
-            onTap: () => _showCategory(context, e.key),
+        if (r.byCategory.isNotEmpty)
+          Card(
             child: Padding(
-              padding: const EdgeInsets.symmetric(vertical: 6),
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  Row(
-                    children: [
-                      Text('${cats.byId[e.key]?.icon ?? '❔'} ${cats.name(e.key)}'),
-                      const Spacer(),
-                      Text('${t.expense == 0 ? 0 : (e.value * 100 / t.expense).round()}%  '),
-                      Money(e.value),
-                    ],
+              padding: const EdgeInsets.fromLTRB(14, 16, 14, 8),
+              child: Column(children: [
+                if (r.period.type == PeriodType.month)
+                  SizedBox(
+                    width: 190,
+                    height: 190,
+                    child: Stack(alignment: Alignment.center, children: [
+                      CustomPaint(
+                        size: const Size(190, 190),
+                        painter: _Donut([for (final e in r.byCategory) (e.value, Color(cats.byId[e.key]?.color ?? 0xFF9E9E9E))]),
+                      ),
+                      // Tổng chi ở giữa vòng — cách trình bày quen thuộc của app chi tiêu.
+                      Column(mainAxisSize: MainAxisSize.min, children: [
+                        Text('Tổng chi', style: theme.textTheme.bodySmall),
+                        Money(t.expense, style: const TextStyle(fontWeight: FontWeight.w800, fontSize: 16)),
+                      ]),
+                    ]),
                   ),
-                  Bar(e.value / maxCat, Color(cats.byId[e.key]?.color ?? 0xFF9E9E9E)),
-                ],
-              ),
+                for (final e in (r.period.type == PeriodType.week ? r.byCategory.take(5) : r.byCategory))
+                  InkWell(
+                    borderRadius: BorderRadius.circular(12),
+                    onTap: () => _showCategory(context, e.key),
+                    child: Padding(
+                      padding: const EdgeInsets.symmetric(vertical: 7),
+                      child: Row(children: [
+                        IconBadge(
+                          size: 38,
+                          color: Color(cats.byId[e.key]?.color ?? 0xFF9E9E9E),
+                          child: Text(cats.byId[e.key]?.icon ?? '❔', style: const TextStyle(fontSize: 18)),
+                        ),
+                        const SizedBox(width: 12),
+                        Expanded(
+                          child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+                            Row(children: [
+                              Expanded(child: Text(cats.name(e.key), style: const TextStyle(fontWeight: FontWeight.w600))),
+                              Text('${t.expense == 0 ? 0 : (e.value * 100 / t.expense).round()}%  ',
+                                  style: theme.textTheme.bodySmall),
+                              Money(e.value, style: const TextStyle(fontWeight: FontWeight.w700)),
+                            ]),
+                            const SizedBox(height: 6),
+                            Bar(e.value / maxCat, Color(cats.byId[e.key]?.color ?? 0xFF9E9E9E)),
+                          ]),
+                        ),
+                      ]),
+                    ),
+                  ),
+              ]),
             ),
           ),
         if (r.period.type != PeriodType.week) ...[
@@ -209,10 +232,15 @@ class _ReportView extends StatelessWidget {
     );
   }
 
-  Widget _pct(double v) => Text(
-    '${v >= 0 ? '▲ +' : '▼ −'}${(v.abs() * 100).round()}%',
-    style: TextStyle(color: v > 0 ? expenseColor : incomeColor, fontFeatures: tabular),
-  );
+  // Icon thay cho ký tự ▲▼: font mặc định trên web không có hai ký tự này (hiện thành ô vuông).
+  Widget _pct(double v) {
+    final c = v > 0 ? expenseColor : incomeColor;
+    return Row(mainAxisSize: MainAxisSize.min, children: [
+      Icon(v >= 0 ? Icons.arrow_upward : Icons.arrow_downward, size: 15, color: c),
+      Text('${v >= 0 ? '+' : '−'}${(v.abs() * 100).round()}%',
+          style: TextStyle(color: c, fontFeatures: tabular, fontWeight: FontWeight.w600)),
+    ]);
+  }
 
   Widget _kv(BuildContext context, String k, Widget v) => Padding(
     padding: const EdgeInsets.symmetric(vertical: 2),
@@ -367,4 +395,33 @@ class _Heatmap extends StatelessWidget {
       ],
     );
   }
+}
+
+class _StatCard extends StatelessWidget {
+  final String label;
+  final int amount;
+  final Color color;
+  final IconData icon;
+  const _StatCard(this.label, this.amount, this.color, this.icon);
+
+  @override
+  Widget build(BuildContext context) => Card(
+        color: color.withValues(alpha: 0.10),
+        child: Padding(
+          padding: const EdgeInsets.all(14),
+          child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+            Row(children: [
+              IconBadge(size: 30, color: color, child: Icon(icon, size: 16, color: color)),
+              const SizedBox(width: 8),
+              Text(label, style: TextStyle(color: color, fontWeight: FontWeight.w600)),
+            ]),
+            const SizedBox(height: 10),
+            FittedBox(
+              fit: BoxFit.scaleDown,
+              alignment: Alignment.centerLeft,
+              child: Money(amount, style: TextStyle(color: color, fontWeight: FontWeight.w800, fontSize: 19)),
+            ),
+          ]),
+        ),
+      );
 }

@@ -7,6 +7,7 @@ import '../data/database.dart';
 import '../reports/report.dart';
 import '../services.dart';
 import 'add_txn.dart';
+import 'manage.dart';
 import 'widgets.dart';
 
 /// Cung cấp bảng tra danh mục/ví (cập nhật trực tiếp từ DB) cho các danh sách.
@@ -34,66 +35,146 @@ Future<void> openEditor(BuildContext context, [Txn? t]) =>
 // ---------------- SC-02 Tổng quan ----------------
 
 class OverviewTab extends StatelessWidget {
-  final VoidCallback openPending;
-  const OverviewTab({super.key, required this.openPending});
+  final VoidCallback openPending, openTransactions;
+  const OverviewTab({super.key, required this.openPending, required this.openTransactions});
 
   @override
   Widget build(BuildContext context) {
     final s = Services.I;
-    final theme = Theme.of(context);
     return WithLookups(
       builder: (context, cats, wallets) {
         if (wallets.isEmpty) {
-          return const EmptyState('Chưa có ví nào. Vào tab Thêm › Ví để tạo ví đầu tiên kèm số dư.');
+          return EmptyState(
+            'Chưa có ví nào. Tạo ví đầu tiên kèm số dư hiện tại để bắt đầu.',
+            action: 'Tạo ví',
+            onAction: () => editWallet(context),
+          );
         }
-        return StreamBuilder<Map<String, int>>(
-          stream: s.repo.watchBalances(),
-          builder: (context, bal) {
-            final total = wallets.values.where((w) => !w.archived).fold<int>(0, (a, w) => a + (bal.data?[w.id] ?? 0));
+        return StreamBuilder<_Overview>(
+          stream: s.live(_Overview.load),
+          builder: (context, snap) {
+            final d = snap.data;
+            if (d == null) return const Center(child: CircularProgressIndicator());
+            final active = wallets.values.where((w) => !w.archived).toList();
+            final total = active.fold<int>(0, (a, w) => a + (d.balances[w.id] ?? 0));
+            final top = d.month.byCategory.take(3).toList();
+            final topMax = top.isEmpty ? 1 : top.first.value;
             return ListView(
-              padding: const EdgeInsets.all(16),
+              padding: const EdgeInsets.fromLTRB(16, 4, 16, 24),
               children: [
-                GestureDetector(
-                  onDoubleTap: () => hideAmounts.value = !hideAmounts.value,
-                  child: Card(
-                    child: Padding(
-                      padding: const EdgeInsets.all(16),
-                      child: Column(
-                        crossAxisAlignment: CrossAxisAlignment.start,
-                        children: [
-                          Text('Tổng số dư', style: theme.textTheme.labelLarge),
-                          Money(total, style: theme.textTheme.headlineMedium?.copyWith(fontWeight: FontWeight.bold)),
-                          Text('Chạm 2 lần để ẩn/hiện số tiền', style: theme.textTheme.bodySmall),
-                        ],
-                      ),
-                    ),
-                  ),
-                ),
-                _ReconcileHints(wallets: wallets, balances: bal.data ?? const {}),
-                const _MonthBudgetCard(),
+                _HeroCard(total: total, income: d.month.totals.income, expense: d.month.totals.expense),
+                _ReconcileHints(wallets: wallets, balances: d.balances),
                 StreamBuilder<List<Txn>>(
                   stream: s.repo.watchPending(),
                   builder: (context, p) => (p.data?.isEmpty ?? true)
                       ? const SizedBox()
                       : Card(
-                          color: theme.colorScheme.tertiaryContainer,
+                          color: const Color(0xFFFFF3E0),
                           child: ListTile(
-                            leading: const Icon(Icons.inbox),
-                            title: Text('Chờ duyệt (${p.data!.length})'),
-                            subtitle: const Text('Giao dịch ghi tự động cần bạn xác nhận'),
-                            trailing: const Icon(Icons.chevron_right),
+                            leading: const IconBadge(
+                              color: Color(0xFFEF6C00),
+                              child: Icon(Icons.inbox, color: Color(0xFFEF6C00)),
+                            ),
+                            title: Text(
+                              '${p.data!.length} giao dịch chờ duyệt',
+                              style: const TextStyle(fontWeight: FontWeight.w700, color: Color(0xFF5D4037)),
+                            ),
+                            subtitle: const Text('Ghi tự động — chạm để xác nhận', style: TextStyle(color: Color(0xFF795548))),
+                            trailing: const Icon(Icons.chevron_right, color: Color(0xFF795548)),
                             onTap: openPending,
                           ),
                         ),
                 ),
-                const SizedBox(height: 8),
-                Text('Gần đây', style: theme.textTheme.titleMedium),
+                if (d.budget != null) _BudgetRing(d.budget!),
+                SectionHeader(
+                  'Ví của tôi',
+                  action: 'Quản lý',
+                  onAction: () => Navigator.push(context, MaterialPageRoute(builder: (_) => const WalletsScreen())),
+                ),
+                SizedBox(
+                  height: 132,
+                  child: ListView.separated(
+                    scrollDirection: Axis.horizontal,
+                    itemCount: active.length,
+                    separatorBuilder: (_, _) => const SizedBox(width: 10),
+                    itemBuilder: (context, i) => _WalletChip(active[i], d.balances[active[i].id] ?? 0),
+                  ),
+                ),
+                if (d.month.insights.isNotEmpty)
+                  Card(
+                    color: Theme.of(context).colorScheme.primary.withValues(alpha: 0.08),
+                    child: Padding(
+                      padding: const EdgeInsets.all(14),
+                      child: Row(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          const Text('💡', style: TextStyle(fontSize: 20)),
+                          const SizedBox(width: 10),
+                          Expanded(child: Text(d.month.insights.first)),
+                        ],
+                      ),
+                    ),
+                  ),
+                if (top.isNotEmpty) ...[
+                  const SectionHeader('Chi nhiều nhất tháng này'),
+                  Card(
+                    child: Padding(
+                      padding: const EdgeInsets.fromLTRB(14, 10, 14, 10),
+                      child: Column(
+                        children: [
+                          for (final e in top)
+                            Padding(
+                              padding: const EdgeInsets.symmetric(vertical: 6),
+                              child: Row(
+                                children: [
+                                  IconBadge(
+                                    size: 38,
+                                    color: Color(cats[e.key]?.color ?? 0xFF9E9E9E),
+                                    child: Text(cats[e.key]?.icon ?? '❔', style: const TextStyle(fontSize: 18)),
+                                  ),
+                                  const SizedBox(width: 12),
+                                  Expanded(
+                                    child: Column(
+                                      crossAxisAlignment: CrossAxisAlignment.start,
+                                      children: [
+                                        Row(
+                                          children: [
+                                            Expanded(
+                                              child: Text(
+                                                cats[e.key]?.name ?? 'Chưa phân loại',
+                                                style: const TextStyle(fontWeight: FontWeight.w600),
+                                              ),
+                                            ),
+                                            Money(e.value, style: const TextStyle(fontWeight: FontWeight.w700)),
+                                          ],
+                                        ),
+                                        const SizedBox(height: 6),
+                                        Bar(e.value / topMax, Color(cats[e.key]?.color ?? 0xFF9E9E9E)),
+                                      ],
+                                    ),
+                                  ),
+                                ],
+                              ),
+                            ),
+                        ],
+                      ),
+                    ),
+                  ),
+                ],
+                SectionHeader('Giao dịch gần đây', action: 'Xem tất cả', onAction: openTransactions),
                 StreamBuilder<List<Txn>>(
                   stream: s.repo.watchTxns(limit: 5),
                   builder: (context, t) => (t.data?.isEmpty ?? true)
-                      ? const Padding(padding: EdgeInsets.all(16), child: Text('Chưa có giao dịch. Bấm + để ghi khoản đầu tiên.'))
-                      : Column(
-                          children: [for (final x in t.data!) TxnTile(x, cats, wallets, onTap: () => openEditor(context, x))],
+                      ? const Card(
+                          child: Padding(
+                            padding: EdgeInsets.all(20),
+                            child: Text('Chưa có giao dịch. Bấm + để ghi khoản đầu tiên.'),
+                          ),
+                        )
+                      : Card(
+                          child: Column(
+                            children: [for (final x in t.data!) TxnTile(x, cats, wallets, onTap: () => openEditor(context, x))],
+                          ),
                         ),
                 ),
               ],
@@ -103,6 +184,230 @@ class OverviewTab extends StatelessWidget {
       },
     );
   }
+}
+
+/// Dữ liệu màn Tổng quan, tính lại mỗi khi DB đổi.
+class _Overview {
+  final Map<String, int> balances;
+  final Report month;
+  final BudgetStatus? budget; // ngân sách tổng của tháng, nếu có
+  const _Overview(this.balances, this.month, this.budget);
+
+  static Future<_Overview> load() async {
+    final s = Services.I;
+    final p = periodOf(PeriodType.month, DateTime.now(), await s.prefs());
+    final budget = (await s.budgetStatus()).where((b) => b.budget.categoryId == null && b.budget.period == 'month').firstOrNull;
+    return _Overview(await s.repo.walletBalances(), await s.report(p), budget);
+  }
+}
+
+class _HeroCard extends StatelessWidget {
+  final int total, income, expense;
+  const _HeroCard({required this.total, required this.income, required this.expense});
+
+  @override
+  Widget build(BuildContext context) {
+    const white = TextStyle(color: Colors.white);
+    return GestureDetector(
+      onDoubleTap: () => hideAmounts.value = !hideAmounts.value,
+      child: Container(
+        margin: const EdgeInsets.only(bottom: 6),
+        padding: const EdgeInsets.fromLTRB(20, 16, 12, 18),
+        decoration: BoxDecoration(
+          borderRadius: BorderRadius.circular(24),
+          gradient: const LinearGradient(
+            colors: [Color(0xFF00897B), Color(0xFF26A69A), Color(0xFF66BB6A)],
+            begin: Alignment.topLeft,
+            end: Alignment.bottomRight,
+          ),
+          boxShadow: [
+            BoxShadow(color: const Color(0xFF00897B).withValues(alpha: 0.35), blurRadius: 18, offset: const Offset(0, 8)),
+          ],
+        ),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Row(
+              children: [
+                Text('Tổng số dư', style: white.copyWith(fontSize: 14, color: Colors.white70)),
+                const Spacer(),
+                ValueListenableBuilder(
+                  valueListenable: hideAmounts,
+                  builder: (context, h, _) => IconButton(
+                    tooltip: h ? 'Hiện số tiền' : 'Ẩn số tiền',
+                    icon: Icon(h ? Icons.visibility_off_outlined : Icons.visibility_outlined, color: Colors.white),
+                    onPressed: () => hideAmounts.value = !h,
+                  ),
+                ),
+              ],
+            ),
+            Money(total, style: white.copyWith(fontSize: 32, fontWeight: FontWeight.w800)),
+            const SizedBox(height: 16),
+            Row(
+              children: [
+                Expanded(
+                  child: _HeroStat(label: 'Thu tháng này', amount: income, icon: Icons.south_west),
+                ),
+                const SizedBox(width: 10),
+                Expanded(
+                  child: _HeroStat(label: 'Chi tháng này', amount: expense, icon: Icons.north_east),
+                ),
+                const SizedBox(width: 8),
+              ],
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+}
+
+class _HeroStat extends StatelessWidget {
+  final String label;
+  final int amount;
+  final IconData icon;
+  const _HeroStat({required this.label, required this.amount, required this.icon});
+
+  @override
+  Widget build(BuildContext context) => Container(
+    padding: const EdgeInsets.all(10),
+    decoration: BoxDecoration(color: Colors.white.withValues(alpha: 0.18), borderRadius: BorderRadius.circular(16)),
+    child: Row(
+      children: [
+        CircleAvatar(
+          radius: 14,
+          backgroundColor: Colors.white,
+          child: Icon(icon, size: 16, color: const Color(0xFF00897B)),
+        ),
+        const SizedBox(width: 8),
+        Expanded(
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Text(label, style: const TextStyle(color: Colors.white70, fontSize: 12)),
+              FittedBox(
+                fit: BoxFit.scaleDown,
+                alignment: Alignment.centerLeft,
+                child: Money(
+                  amount,
+                  style: const TextStyle(color: Colors.white, fontWeight: FontWeight.w700, fontSize: 15),
+                ),
+              ),
+            ],
+          ),
+        ),
+      ],
+    ),
+  );
+}
+
+class _BudgetRing extends StatelessWidget {
+  final BudgetStatus b;
+  const _BudgetRing(this.b);
+
+  @override
+  Widget build(BuildContext context) {
+    final c = budgetColor(b.pct);
+    return Card(
+      child: InkWell(
+        borderRadius: BorderRadius.circular(20),
+        onTap: () => Navigator.push(context, MaterialPageRoute(builder: (_) => const BudgetsScreen())),
+        child: Padding(
+          padding: const EdgeInsets.all(16),
+          child: Row(
+            children: [
+              SizedBox(
+                width: 68,
+                height: 68,
+                child: Stack(
+                  fit: StackFit.expand,
+                  children: [
+                    CircularProgressIndicator(
+                      value: b.pct.clamp(0, 1).toDouble(),
+                      strokeWidth: 8,
+                      color: c,
+                      backgroundColor: c.withValues(alpha: 0.15),
+                      strokeCap: StrokeCap.round,
+                    ),
+                    Center(
+                      child: Text(
+                        '${(b.pct * 100).round()}%',
+                        style: TextStyle(fontWeight: FontWeight.w800, color: c),
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+              const SizedBox(width: 16),
+              Expanded(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    const Text('Ngân sách tháng', style: TextStyle(fontWeight: FontWeight.w700, fontSize: 15)),
+                    const SizedBox(height: 2),
+                    Row(children: [Money(b.spent), const Text(' / '), Money(b.limit)]),
+                    const SizedBox(height: 2),
+                    ValueListenableBuilder(
+                      valueListenable: hideAmounts,
+                      builder: (context, h, _) => Text(
+                        b.remaining >= 0
+                            ? 'Còn được chi ${h ? '•••' : formatVnd(b.perDayLeft(DateTime.now()))}/ngày'
+                            : 'Đã vượt ngân sách',
+                        style: TextStyle(color: b.remaining >= 0 ? null : c, fontWeight: FontWeight.w600),
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+}
+
+class _WalletChip extends StatelessWidget {
+  final Wallet w;
+  final int balance;
+  const _WalletChip(this.w, this.balance);
+
+  @override
+  Widget build(BuildContext context) => SizedBox(
+    width: 156,
+    child: Card(
+      margin: EdgeInsets.zero,
+      child: InkWell(
+        borderRadius: BorderRadius.circular(20),
+        onTap: () => editWallet(context, w),
+        child: Padding(
+          padding: const EdgeInsets.all(12),
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            mainAxisAlignment: MainAxisAlignment.spaceBetween,
+            children: [
+              IconBadge(
+                size: 34,
+                color: Theme.of(context).colorScheme.primary,
+                child: Text(w.icon, style: const TextStyle(fontSize: 17)),
+              ),
+              Text(
+                w.name,
+                maxLines: 1,
+                overflow: TextOverflow.ellipsis,
+                style: const TextStyle(fontWeight: FontWeight.w600),
+              ),
+              FittedBox(
+                fit: BoxFit.scaleDown,
+                alignment: Alignment.centerLeft,
+                child: Money(balance, style: const TextStyle(fontWeight: FontWeight.w800, fontSize: 15)),
+              ),
+            ],
+          ),
+        ),
+      ),
+    ),
+  );
 }
 
 class _ReconcileHints extends StatelessWidget {
@@ -139,58 +444,6 @@ class _ReconcileHints extends StatelessWidget {
           ),
       ],
     );
-  }
-}
-
-/// Thanh tiến độ chi tháng so với ngân sách tổng; không có ngân sách tổng thì chỉ hiện tổng chi.
-class _MonthBudgetCard extends StatelessWidget {
-  const _MonthBudgetCard();
-
-  @override
-  Widget build(BuildContext context) {
-    final s = Services.I;
-    return StreamBuilder(
-      // Tính lại khi giao dịch hoặc ngân sách đổi.
-      stream: s.live(_load),
-      builder: (context, snap) {
-        final d = snap.data;
-        if (d == null) return const SizedBox();
-        final (spent, total, insight) = d;
-        final theme = Theme.of(context);
-        return Card(
-          child: Padding(
-            padding: const EdgeInsets.all(16),
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                Text('Chi tháng này', style: theme.textTheme.labelLarge),
-                Row(
-                  children: [
-                    Money(spent, style: theme.textTheme.titleLarge),
-                    if (total != null) ...[const Text(' / '), Money(total.limit, style: theme.textTheme.bodyLarge)],
-                  ],
-                ),
-                if (total != null) ...[
-                  const SizedBox(height: 8),
-                  Bar(total.pct, budgetColor(total.pct)),
-                  const SizedBox(height: 4),
-                  Text('Còn được chi ${hideAmounts.value ? '•••' : formatVnd(total.perDayLeft(DateTime.now()))}/ngày'),
-                ],
-                if (insight != null) ...[const SizedBox(height: 8), Text('💡 $insight')],
-              ],
-            ),
-          ),
-        );
-      },
-    );
-  }
-
-  static Future<(int, BudgetStatus?, String?)> _load() async {
-    final s = Services.I;
-    final p = periodOf(PeriodType.month, DateTime.now(), await s.prefs());
-    final r = await s.report(p);
-    final total = (await s.budgetStatus()).where((b) => b.budget.categoryId == null && b.budget.period == 'month').firstOrNull;
-    return (r.totals.expense, total, r.insights.firstOrNull);
   }
 }
 
@@ -280,64 +533,78 @@ class _TxnListTabState extends State<TxnListTab> {
                           0,
                           (a, t) => a + (t.type == 'expense' ? -t.amount : (t.type == 'income' ? t.amount : 0)),
                         );
-                        return Column(
-                          crossAxisAlignment: CrossAxisAlignment.stretch,
-                          children: [
-                            Container(
-                              color: Theme.of(context).colorScheme.surfaceContainer,
-                              padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 6),
-                              child: Row(
-                                children: [
-                                  Expanded(child: Text(dayLabel(days[i]), style: Theme.of(context).textTheme.labelLarge)),
-                                  Money(dayTotal.abs(), type: dayTotal < 0 ? 'expense' : 'income'),
-                                ],
-                              ),
-                            ),
-                            for (final t in items)
-                              Dismissible(
-                                key: ValueKey(t.id),
-                                background: Container(
-                                  color: transferColor,
-                                  alignment: Alignment.centerLeft,
-                                  padding: const EdgeInsets.only(left: 16),
-                                  child: const Row(
-                                    children: [
-                                      Icon(Icons.copy, color: Colors.white),
-                                      Text(' Nhân bản', style: TextStyle(color: Colors.white)),
-                                    ],
-                                  ),
+                        // Mỗi ngày một thẻ trắng: tiêu đề ngày + tổng ngày, các giao dịch bên trong.
+                        return Card(
+                          margin: const EdgeInsets.fromLTRB(12, 6, 12, 6),
+                          clipBehavior: Clip.antiAlias,
+                          child: Column(
+                            crossAxisAlignment: CrossAxisAlignment.stretch,
+                            children: [
+                              Padding(
+                                padding: const EdgeInsets.fromLTRB(16, 12, 16, 4),
+                                child: Row(
+                                  children: [
+                                    Expanded(
+                                      child: Text(
+                                        dayLabel(days[i]),
+                                        style: const TextStyle(fontWeight: FontWeight.w800, fontSize: 15),
+                                      ),
+                                    ),
+                                    Money(
+                                      dayTotal.abs(),
+                                      type: dayTotal < 0 ? 'expense' : 'income',
+                                      style: const TextStyle(fontWeight: FontWeight.w700),
+                                    ),
+                                  ],
                                 ),
-                                secondaryBackground: Container(
-                                  color: expenseColor,
-                                  alignment: Alignment.centerRight,
-                                  padding: const EdgeInsets.only(right: 16),
-                                  child: const Row(
-                                    mainAxisAlignment: MainAxisAlignment.end,
-                                    children: [
-                                      Icon(Icons.delete, color: Colors.white),
-                                      Text(' Xoá', style: TextStyle(color: Colors.white)),
-                                    ],
-                                  ),
-                                ),
-                                confirmDismiss: (dir) async {
-                                  if (dir == DismissDirection.startToEnd) {
-                                    await _duplicate(t);
-                                    if (context.mounted) toast(context, 'Đã nhân bản sang hôm nay');
-                                    return false;
-                                  }
-                                  await s.repo.deleteTxn(t.id);
-                                  if (context.mounted) {
-                                    toast(
-                                      context,
-                                      'Đã xoá',
-                                      action: SnackBarAction(label: 'Hoàn tác', onPressed: () => s.repo.undoDeleteTxn(t.id)),
-                                    );
-                                  }
-                                  return true;
-                                },
-                                child: TxnTile(t, cats, wallets, onTap: () => openEditor(context, t)),
                               ),
-                          ],
+                              const Divider(height: 8, indent: 16, endIndent: 16),
+                              for (final t in items)
+                                Dismissible(
+                                  key: ValueKey(t.id),
+                                  background: Container(
+                                    color: transferColor,
+                                    alignment: Alignment.centerLeft,
+                                    padding: const EdgeInsets.only(left: 16),
+                                    child: const Row(
+                                      children: [
+                                        Icon(Icons.copy, color: Colors.white),
+                                        Text(' Nhân bản', style: TextStyle(color: Colors.white)),
+                                      ],
+                                    ),
+                                  ),
+                                  secondaryBackground: Container(
+                                    color: expenseColor,
+                                    alignment: Alignment.centerRight,
+                                    padding: const EdgeInsets.only(right: 16),
+                                    child: const Row(
+                                      mainAxisAlignment: MainAxisAlignment.end,
+                                      children: [
+                                        Icon(Icons.delete, color: Colors.white),
+                                        Text(' Xoá', style: TextStyle(color: Colors.white)),
+                                      ],
+                                    ),
+                                  ),
+                                  confirmDismiss: (dir) async {
+                                    if (dir == DismissDirection.startToEnd) {
+                                      await _duplicate(t);
+                                      if (context.mounted) toast(context, 'Đã nhân bản sang hôm nay');
+                                      return false;
+                                    }
+                                    await s.repo.deleteTxn(t.id);
+                                    if (context.mounted) {
+                                      toast(
+                                        context,
+                                        'Đã xoá',
+                                        action: SnackBarAction(label: 'Hoàn tác', onPressed: () => s.repo.undoDeleteTxn(t.id)),
+                                      );
+                                    }
+                                    return true;
+                                  },
+                                  child: TxnTile(t, cats, wallets, onTap: () => openEditor(context, t)),
+                                ),
+                            ],
+                          ),
                         );
                       },
                     ),

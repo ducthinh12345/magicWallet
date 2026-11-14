@@ -164,8 +164,15 @@ class _AddTxnScreenState extends State<AddTxnScreen> {
             ),
             GestureDetector(
               onTap: () => setState(() => showKeypad = true),
-              child: Padding(
-                padding: const EdgeInsets.symmetric(vertical: 12),
+              child: Container(
+                width: double.infinity,
+                margin: const EdgeInsets.fromLTRB(16, 12, 16, 8),
+                padding: const EdgeInsets.symmetric(vertical: 14, horizontal: 16),
+                decoration: BoxDecoration(
+                  color: typeColor(type).withValues(alpha: 0.08),
+                  borderRadius: BorderRadius.circular(20),
+                  border: Border.all(color: typeColor(type).withValues(alpha: 0.25)),
+                ),
                 child: Column(
                   children: [
                     Semantics(
@@ -173,7 +180,11 @@ class _AddTxnScreenState extends State<AddTxnScreen> {
                       label: 'Số tiền',
                       child: Text(
                         amount == null ? (input.isEmpty ? '0 đ' : input) : formatVnd(amount!),
-                        style: theme.textTheme.displaySmall?.copyWith(fontFeatures: tabular, color: typeColor(type)),
+                        style: theme.textTheme.displaySmall?.copyWith(
+                          fontFeatures: tabular,
+                          color: typeColor(type),
+                          fontWeight: FontWeight.w800,
+                        ),
                       ),
                     ),
                     if (input.isNotEmpty && amount != null && input != amount.toString())
@@ -191,12 +202,17 @@ class _AddTxnScreenState extends State<AddTxnScreen> {
                     _walletPicker('Đến ví', toWalletId, (v) => setState(() => toWalletId = v)),
                   ] else ...[
                     if (sugCats.isNotEmpty) ...[
-                      Text('Gợi ý lúc này', style: theme.textTheme.labelLarge),
+                      Padding(
+                        padding: const EdgeInsets.only(top: 4, bottom: 8),
+                        child: Text('Gợi ý lúc này', style: theme.textTheme.titleSmall?.copyWith(fontWeight: FontWeight.w700)),
+                      ),
                       _catGrid(sugCats),
-                      const Divider(),
+                      const Divider(height: 24),
                     ],
                     _catGrid(rest),
+                    const SizedBox(height: 16),
                     _walletPicker('Ví', walletId, (v) => setState(() => walletId = v)),
+                    const SizedBox(height: 12),
                   ],
                   Row(
                     children: [
@@ -242,18 +258,54 @@ class _AddTxnScreenState extends State<AddTxnScreen> {
     );
   }
 
-  Widget _catGrid(List<Category> list) => Wrap(
-    spacing: 8,
-    runSpacing: 4,
-    children: [
-      for (final c in list)
-        ChoiceChip(
-          avatar: Text(c.icon),
-          label: Text(c.name),
-          selected: categoryId == c.id,
-          onSelected: (_) => setState(() => categoryId = c.id),
-        ),
-    ],
+  /// Lưới 4 cột: icon to trong ô bo góc, tên bên dưới — dễ quét bằng mắt hơn chip chữ.
+  Widget _catGrid(List<Category> list) => LayoutBuilder(
+    builder: (context, box) {
+      final w = (box.maxWidth - 3 * 8) / 4;
+      return Wrap(
+        spacing: 8,
+        runSpacing: 8,
+        children: [
+          for (final c in list)
+            Semantics(
+              selected: categoryId == c.id,
+              button: true,
+              label: c.name,
+              excludeSemantics: true,
+              child: InkWell(
+                borderRadius: BorderRadius.circular(16),
+                onTap: () => setState(() => categoryId = c.id),
+                child: AnimatedContainer(
+                  duration: const Duration(milliseconds: 150),
+                  width: w,
+                  padding: const EdgeInsets.symmetric(vertical: 8, horizontal: 4),
+                  decoration: BoxDecoration(
+                    borderRadius: BorderRadius.circular(16),
+                    color: categoryId == c.id ? Color(c.color).withValues(alpha: 0.14) : null,
+                    border: Border.all(color: categoryId == c.id ? Color(c.color) : Colors.transparent, width: 1.5),
+                  ),
+                  child: Column(
+                    children: [
+                      IconBadge(
+                        color: Color(c.color),
+                        child: Text(c.icon, style: const TextStyle(fontSize: 22)),
+                      ),
+                      const SizedBox(height: 4),
+                      Text(
+                        c.name,
+                        maxLines: 1,
+                        overflow: TextOverflow.ellipsis,
+                        textAlign: TextAlign.center,
+                        style: TextStyle(fontSize: 12, fontWeight: categoryId == c.id ? FontWeight.w700 : FontWeight.w500),
+                      ),
+                    ],
+                  ),
+                ),
+              ),
+            ),
+        ],
+      );
+    },
   );
 
   Widget _walletPicker(String label, String? value, ValueChanged<String?> onChanged) => DropdownButtonFormField<String>(

@@ -138,12 +138,15 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
       );
     }
     final pages = [
-      OverviewTab(openPending: () => Navigator.push(context, MaterialPageRoute(builder: (_) => const PendingScreen()))),
+      OverviewTab(
+        openPending: () => Navigator.push(context, MaterialPageRoute(builder: (_) => const PendingScreen())),
+        openTransactions: () => setState(() => tab = 1),
+      ),
       const TxnListTab(),
       ReportsTab(key: ValueKey(reportType), initial: reportType),
       const MoreTab(),
     ];
-    const titles = ['Tổng quan', 'Giao dịch', 'Báo cáo', 'Thêm'];
+    const titles = ['Ví Ma Thuật', 'Giao dịch', 'Báo cáo', 'Thêm'];
     return Scaffold(
       appBar: AppBar(title: Text(titles[tab])),
       // Nút "+" nổi đè nửa lên nội dung: chừa khoảng dưới để mục cuối danh sách không bị che.

@@ -89,11 +89,10 @@ class TxnTile extends StatelessWidget {
     return ListTile(
       onTap: onTap,
       minTileHeight: 56,
-      leading: CircleAvatar(
-        backgroundColor: Color(c?.color ?? transferColor.toARGB32()).withValues(alpha: 0.15),
-        child: t.type == 'transfer' ? Icon(typeIcon(t.type), color: transferColor) : Text(c?.icon ?? '❔'),
-      ),
-      title: Text(title),
+      leading: t.type == 'transfer'
+          ? const IconBadge(color: transferColor, child: Icon(Icons.swap_horiz, color: transferColor))
+          : IconBadge(color: Color(c?.color ?? 0xFF9E9E9E), child: Text(c?.icon ?? '❔', style: const TextStyle(fontSize: 22))),
+      title: Text(title, style: const TextStyle(fontWeight: FontWeight.w600)),
       subtitle: Text(
         [if (sub.isNotEmpty) sub, '${wallets[t.walletId]?.name ?? ''} · ${_hm(t.occurredAt)}'].join('\n'),
         maxLines: 2,
@@ -104,7 +103,7 @@ class TxnTile extends StatelessWidget {
           Money(
             t.amount,
             type: t.type,
-            style: const TextStyle(fontWeight: FontWeight.w600),
+            style: const TextStyle(fontWeight: FontWeight.w700, fontSize: 15),
           ),
     );
   }
@@ -195,4 +194,38 @@ class _PrivacyCoverState extends State<PrivacyCover> with WidgetsBindingObserver
         if (ios && away && privacyCover.value)
           const Positioned.fill(child: ColoredBox(color: Color(0xFF00796B), child: Center(child: Text('👛', style: TextStyle(fontSize: 64))))),
       ]);
+}
+
+/// Ô vuông bo góc nền nhạt theo màu danh mục — kiểu icon của các app chi tiêu phổ biến.
+class IconBadge extends StatelessWidget {
+  final Color color;
+  final Widget child;
+  final double size;
+  const IconBadge({super.key, required this.color, required this.child, this.size = 44});
+
+  @override
+  Widget build(BuildContext context) => Container(
+        width: size,
+        height: size,
+        alignment: Alignment.center,
+        decoration: BoxDecoration(color: color.withValues(alpha: 0.16), borderRadius: BorderRadius.circular(size * 0.32)),
+        child: child,
+      );
+}
+
+/// Tiêu đề khu vực + nút "Xem tất cả" tuỳ chọn.
+class SectionHeader extends StatelessWidget {
+  final String title;
+  final String? action;
+  final VoidCallback? onAction;
+  const SectionHeader(this.title, {super.key, this.action, this.onAction});
+
+  @override
+  Widget build(BuildContext context) => Padding(
+        padding: const EdgeInsets.fromLTRB(4, 18, 0, 6),
+        child: Row(children: [
+          Expanded(child: Text(title, style: const TextStyle(fontSize: 17, fontWeight: FontWeight.w800))),
+          if (action != null) TextButton(onPressed: onAction, child: Text(action!)),
+        ]),
+      );
 }
