@@ -119,6 +119,8 @@ Report buildReport({
   List<BudgetStatus> budgets = const [],
   required DateTime now,
   Totals? previousYearForSavings,
+  /// Bản miễn phí: không bản đồ nhiệt, nhận xét chỉ ở báo cáo tuần (mục 1.4).
+  bool pro = true,
 }) {
   final cats = CatIndex(categories);
   final totals = Totals.of(current, cats);
@@ -160,7 +162,7 @@ Report buildReport({
   final largest = current.where((t) => t.type == 'expense').toList()..sort((a, b) => b.amountBase.compareTo(a.amountBase));
 
   List<List<int>>? heat;
-  if (period.type == PeriodType.month || period.type == PeriodType.year) {
+  if (pro && (period.type == PeriodType.month || period.type == PeriodType.year)) {
     heat = List.generate(7, (_) => List.filled(24, 0));
     for (final t in current) {
       final e = expenseOf(t, cats);
@@ -168,7 +170,9 @@ Report buildReport({
     }
   }
 
-  final insights = _insights(period, cats, current, prior4, budgets, totals, prev, now);
+  final insights = pro || period.type == PeriodType.week
+      ? _insights(period, cats, current, prior4, budgets, totals, prev, now)
+      : const <String>[];
 
   return Report(
     period: period,

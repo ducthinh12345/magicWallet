@@ -7,6 +7,7 @@ import '../core/periods.dart';
 import '../data/database.dart';
 import '../reports/report.dart';
 import '../services.dart';
+import 'pro_screen.dart';
 import 'export.dart';
 import 'lists.dart';
 import 'widgets.dart';
@@ -47,9 +48,15 @@ class _ReportsTabState extends State<ReportsTab> {
         Padding(
           padding: const EdgeInsets.fromLTRB(16, 8, 16, 0),
           child: SegmentedButton<PeriodType>(
+            // Dấu ✓ làm ô "Tháng" quá rộng, chữ xuống dòng trên điện thoại.
+            showSelectedIcon: false,
             segments: [for (final t in PeriodType.values) ButtonSegment(value: t, label: Text(periodLabels[t]!))],
             selected: {type},
-            onSelectionChanged: (v) {
+            onSelectionChanged: (v) async {
+              if ((v.first == PeriodType.quarter || v.first == PeriodType.year) &&
+                  !await requirePro(context, 'Báo cáo ${periodLabels[v.first]!.toLowerCase()}')) {
+                return;
+              }
               type = v.first;
               offset = 0;
               _reload();

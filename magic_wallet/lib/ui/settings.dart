@@ -3,9 +3,12 @@ import 'package:flutter/material.dart';
 import 'package:local_auth/local_auth.dart';
 
 import '../services.dart';
+import '../pro/pro.dart';
+import 'pro_screen.dart';
 import 'export.dart';
 import 'google_ui.dart';
 import 'manage.dart';
+import 'setup_guide.dart';
 import 'sources.dart';
 import 'widgets.dart';
 
@@ -18,6 +21,25 @@ class MoreTab extends StatelessWidget {
     void go(Widget w) => Navigator.push(context, MaterialPageRoute(builder: (_) => w));
     return ListView(
       children: [
+        ListTile(
+          leading: const Icon(Icons.workspace_premium_outlined),
+          title: const Text('Ví Ma Thuật Pro'),
+          subtitle: FutureBuilder<ProState>(
+            future: ProState.load(Services.I.db),
+            builder: (context, st) {
+              final now = DateTime.now();
+              final p = st.data;
+              if (p == null) return const SizedBox();
+              return Text(p.purchased
+                  ? 'Đang dùng Pro ${p.owned == 'lifetime' ? 'trọn đời' : 'gói năm'}'
+                  : p.trialActive(now)
+                  ? 'Dùng thử còn ${p.trialDaysLeft(now)} ngày'
+                  : 'Bản miễn phí — xem quyền lợi Pro');
+            },
+          ),
+          onTap: () => go(const ProScreen()),
+        ),
+        const Divider(),
         ListTile(
           leading: const Icon(Icons.account_balance_wallet_outlined),
           title: const Text('Ví & đối soát'),
@@ -140,12 +162,14 @@ class _GeneralScreenState extends State<GeneralScreen> {
               },
             ),
           ),
+          // Xin quyền bằng hộp thoại hệ thống; đã từ chối thì chỉ còn cách vào Cài đặt (có hướng dẫn ở dòng dưới).
           ListTile(
-            title: const Text('Bật thông báo'),
+            title: const Text('Xin quyền gửi thông báo'),
             subtitle: const Text('Cảnh báo ngân sách, báo cáo tuần/tháng, giao dịch mới'),
             trailing: const Icon(Icons.notifications_active_outlined),
             onTap: s.notifier.requestPermission,
           ),
+          const SetupChecklist(only: ['notifications']),
         ],
       ),
     );
@@ -199,14 +223,16 @@ class _SecurityScreenState extends State<SecurityScreen> {
                     setState(() => lock = v);
                   },
           ),
-          if (NativeCapture.supported)
+          if (!kIsWeb)
             SwitchListTile(
-              title: const Text('Chặn chụp màn hình'),
+              // Android: FLAG_SECURE chặn cả chụp màn hình; iOS: chỉ che được trong trình chuyển ứng dụng.
+              title: Text(NativeCapture.supported ? 'Chặn chụp màn hình' : 'Che nội dung khi chuyển ứng dụng'),
               subtitle: const Text('Ẩn nội dung trong trình chuyển ứng dụng'),
               value: secure,
               onChanged: (v) async {
                 await s.setFlag('secure_flag', v);
                 await NativeCapture.setSecure(v);
+                privacyCover.value = v;
                 setState(() => secure = v);
               },
             ),

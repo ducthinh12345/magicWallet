@@ -3,6 +3,11 @@
 Cài đặt theo tài liệu `../Tài liệu thiết kế nghiệp vụ – Ứng dụng Quản lý Chi tiêu Cá nhân Local-first.md`.
 Flutter (Android ưu tiên, iOS, PWA) + Drift/SQLite3MultipleCiphers. Không có backend.
 
+## Phát hành
+
+- CH Play: [`docs/release/play-store.md`](docs/release/play-store.md) · Chính sách quyền riêng tư: [`docs/release/privacy-policy.md`](docs/release/privacy-policy.md)
+- iOS: [`docs/release/ios.md`](docs/release/ios.md)
+
 ## Chạy
 
 ```sh

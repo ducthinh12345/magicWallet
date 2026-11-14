@@ -5,6 +5,8 @@ import '../core/money.dart';
 import '../data/database.dart';
 import '../reports/report.dart';
 import '../services.dart';
+import '../pro/pro.dart';
+import 'pro_screen.dart';
 import 'widgets.dart';
 
 const walletTypes = {'cash': 'Tiền mặt', 'bank': 'Ngân hàng', 'credit': 'Thẻ tín dụng', 'ewallet': 'Ví điện tử'};
@@ -128,6 +130,11 @@ Future<void> editWallet(BuildContext context, [Wallet? w]) async {
               FilledButton(
                 onPressed: () async {
                   if (name.text.trim().isEmpty) return;
+                  if (w == null &&
+                      (await s.repo.watchWallets().first).length >= FreeLimits.wallets &&
+                      !(ctx.mounted && await requirePro(ctx, 'Tạo ví thứ ${FreeLimits.wallets + 1} trở đi'))) {
+                    return;
+                  }
                   final inst = s.catalog.byId(instId);
                   final id = await s.repo.saveWallet(
                     WalletsCompanion(
@@ -432,7 +439,10 @@ class _BudgetsScreenState extends State<BudgetsScreen> {
               SwitchListTile(
                 title: const Text('Chuyển phần dư sang kỳ sau'),
                 value: rollover,
-                onChanged: (v) => set(() => rollover = v),
+                onChanged: (v) async {
+                  if (v && !await requirePro(ctx, 'Chuyển phần dư ngân sách sang kỳ sau')) return;
+                  set(() => rollover = v);
+                },
               ),
             ],
           ),
@@ -449,6 +459,17 @@ class _BudgetsScreenState extends State<BudgetsScreen> {
               onPressed: () async {
                 final a = parseAmountInput(amount.text);
                 if (a == null || a <= 0) return;
+                if (b == null) {
+                  final all = await s.repo.watchBudgets().first;
+                  final over = cat == null
+                      ? all.any((x) => x.categoryId == null)
+                      : all.where((x) => x.categoryId != null).length >= FreeLimits.categoryBudgets;
+                  if (over &&
+                      !(ctx.mounted &&
+                          await requirePro(ctx, cat == null ? 'Thêm ngân sách tổng thứ hai' : 'Thêm quá ${FreeLimits.categoryBudgets} ngân sách danh mục'))) {
+                    return;
+                  }
+                }
                 await s.repo.saveBudget(
                   BudgetsCompanion(
                     id: b == null ? const Value.absent() : Value(b.id),

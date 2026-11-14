@@ -11,9 +11,11 @@ import '../data/database.dart';
 import '../services.dart';
 import 'lists.dart';
 import 'manage.dart';
+import 'pro_screen.dart';
 import 'reports_ui.dart';
 import 'settings.dart';
 import 'sources.dart';
+import 'widgets.dart';
 
 final navigatorKey = GlobalKey<NavigatorState>();
 
@@ -40,7 +42,9 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
     () async {
       onboarded = await s.flag('onboarded');
       locked = await s.flag('lock_enabled');
-      await NativeCapture.setSecure(await s.flag('secure_flag', def: true));
+      final secure = await s.flag('secure_flag', def: true);
+      await NativeCapture.setSecure(secure);
+      privacyCover.value = secure;
       await s.pushWhitelist();
       setState(() {});
       if (locked) _unlock();
@@ -107,6 +111,7 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
     if (payload == null || nav == null) return;
     if (payload == 'pending') nav.push(MaterialPageRoute(builder: (_) => const PendingScreen()));
     if (payload == 'budgets') nav.push(MaterialPageRoute(builder: (_) => const BudgetsScreen()));
+    if (payload == 'pro') nav.push(MaterialPageRoute(builder: (_) => const ProScreen()));
     if (payload.startsWith('report:')) {
       setState(() {
         reportType = PeriodType.values.byName(payload.substring(7));
@@ -141,7 +146,8 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
     const titles = ['Tổng quan', 'Giao dịch', 'Báo cáo', 'Thêm'];
     return Scaffold(
       appBar: AppBar(title: Text(titles[tab])),
-      body: pages[tab],
+      // Nút "+" nổi đè nửa lên nội dung: chừa khoảng dưới để mục cuối danh sách không bị che.
+      body: Padding(padding: const EdgeInsets.only(bottom: 36), child: pages[tab]),
       floatingActionButton: FloatingActionButton(
         tooltip: 'Ghi giao dịch',
         onPressed: () => openEditor(context),

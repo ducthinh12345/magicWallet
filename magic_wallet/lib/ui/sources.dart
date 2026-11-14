@@ -10,6 +10,9 @@ import '../capture/statement_import.dart';
 import '../core/money.dart';
 import '../data/database.dart';
 import '../services.dart';
+import '../pro/pro.dart';
+import 'pro_screen.dart';
+import 'setup_guide.dart';
 import 'widgets.dart';
 
 /// Phiên bản nội dung giải thích mục đích; đổi nội dung thì tăng số để xin đồng ý lại (Luật GDĐT 2023).
@@ -51,6 +54,15 @@ Future<bool> askConsent(BuildContext context, String source) async {
   );
   return ok;
 }
+
+/// Tắt ghi tự động: app đã ngừng xử lý ngay, nhưng quyền hệ thống chỉ người dùng tự gỡ được.
+const _revokeListener = SetupStep(
+  'listener',
+  Icons.notifications_off_outlined,
+  'Gỡ quyền truy cập thông báo',
+  'Ví Ma Thuật đã ngừng đọc thông báo. Nếu muốn gỡ hẳn quyền khỏi hệ thống:',
+  ['Trong danh sách vừa mở, chạm "Ví Ma Thuật".', 'Tắt công tắc "Cho phép truy cập thông báo".', 'Bấm nút Quay lại để về app.'],
+);
 
 /// SC-09: bật/tắt từng nguồn, chọn ngân hàng, thử với thông báo mẫu.
 class SourcesScreen extends StatefulWidget {
@@ -121,14 +133,14 @@ class _SourcesScreenState extends State<SourcesScreen> with WidgetsBindingObserv
   Future<void> _toggleNotif(bool on) async {
     if (on) {
       if (!await askConsent(context, 'notification')) return;
-      if (!listener) await NativeCapture.openListenerSettings();
+      if (!listener && mounted) await guideTo(context, captureSetup(false).first);
     } else {
       // Rút lại đồng ý: xoá whitelist; quyền hệ thống người dùng tắt trong Cài đặt.
       await s.db.setSetting('consent:notification', '');
       await s.db.setSetting('capture_institutions', '[]');
       await s.setFlag('capture_sms', false);
       await s.pushWhitelist();
-      if (listener) await NativeCapture.openListenerSettings();
+      if (listener && mounted) await guideTo(context, _revokeListener);
     }
     await _load();
   }
@@ -159,12 +171,13 @@ class _SourcesScreenState extends State<SourcesScreen> with WidgetsBindingObserv
               value: notifConsent && listener,
               onChanged: _toggleNotif,
             ),
-            if (notifConsent && !listener)
-              Padding(
-                padding: const EdgeInsets.symmetric(horizontal: 16),
-                child: FilledButton.tonal(onPressed: NativeCapture.openListenerSettings, child: const Text('Mở cài đặt quyền')),
-              ),
             if (notifConsent) ...[
+              Padding(
+                padding: const EdgeInsets.fromLTRB(16, 8, 16, 0),
+                child: Text('Thiết lập điện thoại để ghi tự động chạy ổn định', style: theme.textTheme.titleMedium),
+              ),
+              const SetupChecklist(),
+              const Divider(),
               SwitchListTile(
                 title: const Text('Cả SMS biến động số dư'),
                 subtitle: const Text('Đọc qua thông báo của app tin nhắn, không xin quyền đọc SMS'),
@@ -180,6 +193,7 @@ class _SourcesScreenState extends State<SourcesScreen> with WidgetsBindingObserv
                 subtitle: const Text('Chỉ áp dụng cho giao dịch khớp quy tắc của bạn'),
                 value: auto,
                 onChanged: (v) async {
+                  if (v && !await requirePro(context, 'Tự xác nhận giao dịch')) return;
                   await s.setFlag('auto_confirm', v);
                   _load();
                 },
@@ -194,7 +208,11 @@ class _SourcesScreenState extends State<SourcesScreen> with WidgetsBindingObserv
                   subtitle: _rateText(i.id),
                   value: enabled.contains(i.id),
                   onChanged: (v) async {
-                    await s.setInstitution(i.id, v!);
+                    if (v! && enabled.length >= FreeLimits.autoSources &&
+                        !await requirePro(context, 'Ghi tự động từ ${FreeLimits.autoSources + 1} ngân hàng/ví trở lên')) {
+                      return;
+                    }
+                    await s.setInstitution(i.id, v);
                     _load();
                   },
                 ),
@@ -218,7 +236,9 @@ class _SourcesScreenState extends State<SourcesScreen> with WidgetsBindingObserv
             leading: const Icon(Icons.mail_outline),
             title: const Text('Email hoá đơn (Apps Script)'),
             subtitle: Text(emailConsent ? 'Đã bật — dữ liệu về qua lần đồng bộ Google' : 'Hướng dẫn cài 1 lần'),
-            onTap: () => _emailGuide(context),
+            onTap: () async {
+              if (await requirePro(context, 'Đọc email hoá đơn') && context.mounted) await _emailGuide(context);
+            },
           ),
           ListTile(
             leading: const Icon(Icons.upload_file),

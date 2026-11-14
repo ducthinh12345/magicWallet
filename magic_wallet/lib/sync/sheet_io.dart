@@ -249,3 +249,16 @@ Future<(String, Map<String, int>)> createSpreadsheet(sheets.SheetsApi api, drive
   await withBackoff(() => driveApi.files.update(drive.File(), id, addParents: folder.id, removeParents: 'root'));
   return (id, ids);
 }
+
+/// Tìm Sheet "Ví Riêng – Dữ liệu" mà app (cùng Google Cloud project) đã tạo trên máy khác.
+/// Với scope drive.file, Drive chỉ trả về file do chính app tạo. Nhiều bản thì lấy bản cũ nhất (bản gốc).
+Future<(String, Map<String, int>)?> findSpreadsheet(sheets.SheetsApi api, drive.DriveApi driveApi) async {
+  final r = await withBackoff(() => driveApi.files.list(
+      q: "name = 'Ví Riêng – Dữ liệu' and mimeType = 'application/vnd.google-apps.spreadsheet' and trashed = false",
+      orderBy: 'createdTime',
+      $fields: 'files(id)'));
+  final id = r.files?.firstOrNull?.id;
+  if (id == null) return null;
+  final ss = await withBackoff(() => api.spreadsheets.get(id, $fields: 'sheets.properties'));
+  return (id, {for (final s in ss.sheets!) s.properties!.title!: s.properties!.sheetId!});
+}

@@ -2,6 +2,7 @@ import 'package:drift/drift.dart';
 
 import '../data/database.dart';
 import '../data/repo.dart';
+import '../pro/pro.dart';
 import 'classifier.dart';
 import 'parser.dart';
 import 'statement_import.dart';
@@ -48,11 +49,18 @@ class CapturePipeline {
   final InstitutionCatalog catalog;
   CapturePipeline(this.db, this.repo, this.catalog);
 
-  Future<IngestOutcome> ingest(RawInput input, {required Set<String> whitelist, bool autoConfirmEnabled = false}) async {
+  /// `onlyInstitutions`: giới hạn bản miễn phí — SMS của ngân hàng khác (qua app tin nhắn) cũng bị bỏ qua.
+  Future<IngestOutcome> ingest(
+    RawInput input, {
+    required Set<String> whitelist,
+    bool autoConfirmEnabled = false,
+    Set<String>? onlyInstitutions,
+  }) async {
     // US-02 AC1: chỉ app trong whitelist. Email/nhập file đã do người dùng chủ động chọn.
     if (input.source == 'notification' && !whitelist.contains(input.package)) return Skipped('not_whitelisted');
 
     final inst = catalog.identify(input.package, input.title);
+    if (onlyInstitutions != null && inst != null && !onlyInstitutions.contains(inst.id)) return Skipped('pro_limit');
     final text = input.title.isEmpty ? input.text : '${input.title}\n${input.text}';
     final result = parseNotification(text, inst: inst);
     if (result is DroppedSensitive) return Skipped('sensitive'); // không lưu gì cả
@@ -78,7 +86,8 @@ class CapturePipeline {
     }
     final p = result.txn;
 
-    final wallet = await _matchWallet(p.last4, inst);
+    // Chưa có ví cho ngân hàng/thẻ này: tự tạo thay vì bỏ qua, số dư đầu suy từ số dư ngân hàng báo (nếu có).
+    final wallet = await _matchWallet(p.last4, inst) ?? (inst == null || !await _canCreateWallet() ? null : await _createWallet(inst, p, text));
     if (wallet == null) {
       await saveRaw('unknown');
       return Skipped('no_wallet');
@@ -130,13 +139,38 @@ class CapturePipeline {
   Future<Wallet?> _matchWallet(String? last4, Institution? inst) async {
     final wallets = await (db.select(db.wallets)..where((w) => w.deletedAt.isNull() & w.archived.equals(false))).get();
     if (last4 != null) {
-      final m = wallets.where((w) => w.accountLast4 == last4).toList();
-      if (m.length == 1) return m.first;
+      // Trùng 4 số cuối ở ngân hàng khác thì không phải tài khoản này.
+      final m = wallets
+          .where((w) => w.accountLast4 == last4 && (inst == null || _instOf(w) == null || _instOf(w)!.id == inst.id))
+          .toList();
       final sameInst = m.where((w) => _instOf(w)?.id == inst?.id).firstOrNull;
       if (sameInst != null) return sameInst;
+      if (m.length == 1) return m.first;
     }
-    if (inst != null) return wallets.where((w) => _instOf(w)?.id == inst.id).firstOrNull;
-    return null;
+    if (inst == null) return null;
+    final ofInst = wallets.where((w) => _instOf(w)?.id == inst.id).toList();
+    // Có 4 số cuối mà mọi ví của ngân hàng này đều mang số khác → tài khoản/thẻ khác, không gộp nhầm.
+    if (last4 != null && ofInst.isNotEmpty && ofInst.every((w) => w.accountLast4 != null && w.accountLast4 != last4)) return null;
+    return ofInst.firstOrNull;
+  }
+
+  /// Bản miễn phí tối đa 3 ví: đủ rồi thì không tự tạo thêm (giao dịch vào "Chưa xác định").
+  Future<bool> _canCreateWallet() async =>
+      await isPro(db) || (await (db.select(db.wallets)..where((w) => w.deletedAt.isNull())).get()).length < FreeLimits.wallets;
+
+  Future<Wallet> _createWallet(Institution inst, ParsedTxn p, String text) async {
+    final credit = RegExp(r'tin d[uụ]ng|credit', caseSensitive: false).hasMatch(text);
+    final type = credit ? 'credit' : (inst.kind == 'ewallet' ? 'ewallet' : 'bank');
+    final id = await repo.saveWallet(WalletsCompanion.insert(
+      name: credit ? '${inst.name} thẻ tín dụng' : inst.name,
+      type: type,
+      icon: Value(const {'credit': '💳', 'ewallet': '📱'}[type] ?? '🏦'),
+      accountLast4: Value(p.last4),
+      sourceAppPackage: Value(inst.packages.first),
+      // Giao dịch mới còn chờ duyệt: số dư đầu = số dư báo − giao dịch này, để xác nhận xong là khớp.
+      openingBalance: Value(p.balance == null ? 0 : p.balance! - p.direction * p.amount),
+    ));
+    return (db.select(db.wallets)..where((w) => w.id.equals(id))).getSingle();
   }
 
   Institution? _instOf(Wallet w) => w.sourceAppPackage == null ? null : catalog.identify(w.sourceAppPackage!, '');

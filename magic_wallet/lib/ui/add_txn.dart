@@ -4,6 +4,8 @@ import 'package:flutter/material.dart';
 import '../core/money.dart';
 import '../data/database.dart';
 import '../services.dart';
+import '../pro/pro.dart';
+import 'pro_screen.dart';
 import 'widgets.dart';
 
 /// SC-03: thêm/sửa giao dịch. Mở sẵn bàn phím số; tối thiểu số tiền + danh mục là lưu được (US-01).
@@ -48,7 +50,7 @@ class _AddTxnScreenState extends State<AddTxnScreen> {
 
   Future<void> _load() async {
     final c = await s.repo.allCategories();
-    final w = (await s.repo.watchWallets().first).where((w) => !w.archived).toList();
+    final w = writableWallets((await s.repo.watchWallets().first).where((w) => !w.archived).toList(), await s.pro());
     walletId ??= await s.repo.lastUsedWalletId();
     final sug = await s.repo.suggestedCategoryIds(type, DateTime.now());
     if (!mounted) return;
@@ -96,8 +98,12 @@ class _AddTxnScreenState extends State<AddTxnScreen> {
     // 5.2 bước 7: học lại từ lần sửa danh mục.
     if (categoryChanged && mounted) {
       final key = (e.merchant?.isNotEmpty ?? false) ? e.merchant! : e.note;
+      final ruleCount = (await s.db.select(s.db.classificationRules).get()).length;
       if (key.trim().length >= 3 &&
-          await confirm(context, 'Áp dụng danh mục này cho các giao dịch tương tự "$key"?', ok: 'Áp dụng')) {
+          mounted &&
+          await confirm(context, 'Áp dụng danh mục này cho các giao dịch tương tự "$key"?', ok: 'Áp dụng') &&
+          (ruleCount < FreeLimits.rules ||
+              (mounted && await requirePro(context, 'Tạo quá ${FreeLimits.rules} quy tắc phân loại')))) {
         await s.db
             .into(s.db.classificationRules)
             .insert(

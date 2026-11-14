@@ -1,3 +1,4 @@
+import 'package:flutter/foundation.dart' show kIsWeb, defaultTargetPlatform, TargetPlatform;
 import 'package:flutter/material.dart';
 
 import '../core/money.dart';
@@ -158,3 +159,40 @@ Future<bool> confirm(BuildContext context, String message, {String ok = 'Đồng
 
 void toast(BuildContext context, String msg, {SnackBarAction? action}) =>
     ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(msg), action: action));
+
+/// iOS không có FLAG_SECURE: che nội dung khi app rời màn hình để ảnh trong trình chuyển app không lộ số tiền (10.1).
+final privacyCover = ValueNotifier<bool>(true);
+
+class PrivacyCover extends StatefulWidget {
+  final Widget child;
+  const PrivacyCover({super.key, required this.child});
+  @override
+  State<PrivacyCover> createState() => _PrivacyCoverState();
+}
+
+class _PrivacyCoverState extends State<PrivacyCover> with WidgetsBindingObserver {
+  bool away = false;
+  final bool ios = !kIsWeb && defaultTargetPlatform == TargetPlatform.iOS;
+
+  @override
+  void initState() {
+    super.initState();
+    if (ios) WidgetsBinding.instance.addObserver(this);
+  }
+
+  @override
+  void dispose() {
+    if (ios) WidgetsBinding.instance.removeObserver(this);
+    super.dispose();
+  }
+
+  @override
+  void didChangeAppLifecycleState(AppLifecycleState s) => setState(() => away = s != AppLifecycleState.resumed);
+
+  @override
+  Widget build(BuildContext context) => Stack(children: [
+        widget.child,
+        if (ios && away && privacyCover.value)
+          const Positioned.fill(child: ColoredBox(color: Color(0xFF00796B), child: Center(child: Text('👛', style: TextStyle(fontSize: 64))))),
+      ]);
+}

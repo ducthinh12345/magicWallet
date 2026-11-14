@@ -1,3 +1,4 @@
+import 'dart:async';
 import 'dart:convert';
 import 'dart:math';
 
@@ -14,6 +15,8 @@ import 'core/money.dart';
 import 'core/periods.dart';
 import 'data/database.dart';
 import 'data/repo.dart';
+import 'pro/billing.dart';
+import 'pro/pro.dart';
 import 'reports/report.dart';
 import 'sync/google.dart';
 
@@ -42,7 +45,13 @@ class NativeCapture {
 
   static Future<void> setWhitelist(Set<String> pkgs) => _call('setWhitelist', pkgs.toList());
   static Future<bool> listenerEnabled() async => await _call<bool>('isListenerEnabled') ?? false;
-  static Future<void> openListenerSettings() => _call('openListenerSettings');
+
+  /// Trạng thái thiết lập hệ thống: listener, battery, notifications (bool), miui (bool).
+  static Future<Map<String, dynamic>> setupStatus() async =>
+      Map<String, dynamic>.from(await _call<Map>('setupStatus') ?? const {});
+
+  /// Mở thẳng màn cài đặt: listener / battery / autostart / notifications.
+  static Future<void> openSetting(String name) => _call('openSetting', name);
 
   /// FLAG_SECURE: chặn chụp màn hình và che nội dung trong trình chuyển app (10.1).
   static Future<void> setSecure(bool on) => _call('setSecure', on);
@@ -64,7 +73,8 @@ class Notifier {
     await _plugin.initialize(
       settings: const InitializationSettings(
         android: AndroidInitializationSettings('@mipmap/ic_launcher'),
-        iOS: DarwinInitializationSettings(),
+        // Quyền tối thiểu (1.3): iOS không hỏi quyền ngay khi mở app, chỉ khi người dùng bấm xin quyền.
+        iOS: DarwinInitializationSettings(requestAlertPermission: false, requestBadgePermission: false, requestSoundPermission: false),
       ),
       onDidReceiveNotificationResponse: (r) => onTap?.call(r.payload),
     );
@@ -73,6 +83,9 @@ class Notifier {
 
   Future<void> requestPermission() async {
     await _plugin
+        .resolvePlatformSpecificImplementation<IOSFlutterLocalNotificationsPlugin>()
+        ?.requestPermissions(alert: true, badge: true, sound: true);
+    await _plugin
         .resolvePlatformSpecificImplementation<AndroidFlutterLocalNotificationsPlugin>()
         ?.requestNotificationsPermission();
   }
@@ -80,6 +93,14 @@ class Notifier {
   Future<void> show(int id, String title, String body, {String? payload}) async {
     if (!_ready) return;
     await _plugin.show(id: id, title: title, body: body, notificationDetails: _details, payload: payload);
+  }
+
+  /// Thông báo hẹn một lần (vd nhắc hết dùng thử Pro).
+  Future<void> scheduleOnce(int id, DateTime at, String title, String body, {String? payload}) async {
+    if (!_ready || at.isBefore(DateTime.now())) return;
+    await _plugin.zonedSchedule(
+        id: id, scheduledDate: tz.TZDateTime.from(at, tz.local), notificationDetails: _details, title: title, body: body,
+        payload: payload, androidScheduleMode: AndroidScheduleMode.inexactAllowWhileIdle);
   }
 
   /// Báo cáo tuần tối Chủ nhật 20:00, báo cáo tháng 8:00 ngày 1 (7.3).
@@ -123,7 +144,8 @@ class Services {
   final GoogleService google;
   final Notifier notifier;
   final FlutterSecureStorage secure;
-  Services._(this.db, this.repo, this.catalog, this.pipeline, this.google, this.notifier, this.secure);
+  final Billing billing;
+  Services._(this.db, this.repo, this.catalog, this.pipeline, this.google, this.notifier, this.secure) : billing = Billing(db);
 
   static Services? _instance;
   static Services get I => _instance!;
@@ -149,7 +171,11 @@ class Services {
     if (created > 0) {
       await s.notifier.show(3, 'Hóa đơn định kỳ đến hạn', 'Có $created giao dịch định kỳ chờ bạn duyệt.', payload: 'pending');
     }
-    if (!headless) await s.notifier.scheduleReports();
+    if (!headless) {
+      await s.notifier.scheduleReports();
+      // Đối chiếu quyền Pro với Play ở nền, không chặn việc mở app.
+      unawaited(s.billing.init());
+    }
     return _instance = s;
   }
 
@@ -165,8 +191,14 @@ class Services {
   Future<void> setFlag(String key, bool v) => db.setSetting(key, v ? '1' : '0');
 
   /// Whitelist = package của các tổ chức người dùng bật + app SMS (nếu bật) + package tự thêm (US-02 AC1).
+  Future<bool> pro() => isPro(db);
+
+  /// Ngân hàng/ví được ghi tự động: bản miễn phí chỉ 1 nguồn (nguồn bật đầu tiên — BR-10).
+  Future<Set<String>> allowedInstitutions() async =>
+      allowedSources(List<String>.from(jsonDecode(await db.getSetting('capture_institutions') ?? '[]')), await pro()).toSet();
+
   Future<Set<String>> whitelist() async {
-    final ids = Set<String>.from(jsonDecode(await db.getSetting('capture_institutions') ?? '[]'));
+    final ids = await allowedInstitutions();
     final extra = Set<String>.from(jsonDecode(await db.getSetting('capture_extra_packages') ?? '[]'));
     return {
       for (final i in catalog.all)
@@ -198,6 +230,17 @@ class Services {
     }
   }
 
+  // ---------------- Pro ----------------
+
+  /// Dùng thử 14 ngày không cần thẻ; nhắc trước 3 ngày khi sắp hết (Luật BVQLNTD 2023, mục 10.2.1).
+  /// shortcut: lưu trên máy nên xoá dữ liệu app là dùng thử lại được; cần chặt hơn thì dùng free trial của gói đăng ký Play.
+  Future<void> startTrial() async {
+    final now = DateTime.now();
+    await db.setSetting('pro_trial_start', now.toIso8601String());
+    await notifier.scheduleOnce(9003, now.add(const Duration(days: trialDays - 3)), 'Dùng thử Pro còn 3 ngày',
+        'Hết dùng thử, dữ liệu của bạn vẫn giữ nguyên; chỉ các tính năng Pro dừng lại.', payload: 'pro');
+  }
+
   // ---------------- Thu thập ----------------
 
   /// Xử lý hàng đợi thông báo từ Android; trả về số giao dịch mới.
@@ -205,7 +248,9 @@ class Services {
     final queue = await NativeCapture.takeQueue();
     if (queue.isEmpty) return 0;
     final wl = await whitelist();
-    final auto = await flag('auto_confirm');
+    // Tự xác nhận khi tin cậy ≥ 95% là tính năng Pro.
+    final auto = await flag('auto_confirm') && await pro();
+    final allowed = await allowedInstitutions();
     final cats = {for (final c in await repo.allCategories()) c.id: c};
     var n = 0;
     for (final e in queue) {
@@ -219,6 +264,7 @@ class Services {
         ),
         whitelist: wl,
         autoConfirmEnabled: auto,
+        onlyInstitutions: allowed,
       );
       if (out is Created) {
         n++;
@@ -240,7 +286,8 @@ class Services {
   // ---------------- Báo cáo & ngân sách ----------------
 
   Future<List<BudgetStatus>> budgetStatus([DateTime? now]) async => budgetStatuses(
-    budgets: await repo.watchBudgets().first,
+    // Hết Pro: không còn chuyển dư sang kỳ sau (BR-10), cài đặt của người dùng vẫn giữ để bật lại khi gia hạn.
+    budgets: [for (final b in await repo.watchBudgets().first) await pro() ? b : b.copyWith(rollover: false)],
     categories: await repo.allCategories(),
     now: now ?? DateTime.now(),
     prefs: await prefs(),
@@ -279,6 +326,7 @@ class Services {
       categories: await repo.allCategories(),
       budgets: (await budgetStatus()).where((b) => b.period.type == p.type).toList(),
       now: DateTime.now(),
+      pro: await pro(),
     );
   }
 
@@ -298,14 +346,16 @@ class Services {
   /// Đồng bộ nền khi mở app/quay lại app; nuốt lỗi mạng nhưng ghi lại để màn hình Google hiển thị.
   Future<void> backgroundSync() async {
     try {
-      final r = await google.sync(whitelist: await whitelist(), autoConfirm: await flag('auto_confirm'));
+      final p = await pro();
+      final r = await google.sync(whitelist: await whitelist(), autoConfirm: await flag('auto_confirm') && p, inbox: p);
       if (r != null) {
         await db.setSetting('sheets_last_error', '');
         if (r.conflicts.isNotEmpty || r.missingOnSheet.isNotEmpty) {
           await db.setSetting('sheets_attention', '${r.conflicts.length + r.missingOnSheet.length}');
         }
       }
-      await google.autoBackupIfDue(await backupKey());
+      // Sao lưu Drive tự động hằng ngày là Pro; sao lưu thủ công luôn miễn phí.
+      if (p) await google.autoBackupIfDue(await backupKey());
     } catch (e) {
       await db.setSetting('sheets_last_error', '${DateTime.now().toIso8601String()} $e');
     }

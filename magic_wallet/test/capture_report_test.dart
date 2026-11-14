@@ -15,6 +15,10 @@ import 'package:magic_wallet/reports/report.dart';
 // Thông báo mẫu TỰ SOẠN theo dạng phổ biến — chưa phải thông báo thật thu từ người thử nghiệm (mục 5.5).
 const vcbStyle = 'TK 0071000123456 | GD: -45,000VND 11/11/26 12:31 | SD: 1,955,000VND | ND: THANH TOAN QR HIGHLANDS COFFEE';
 const momoStyle = 'Bạn đã nhận 200.000đ từ NGUYEN VAN A. Số dư ví: 350.000đ';
+// Mẫu THẬT từ TPBank trên máy người dùng (2026-11-14), số tài khoản đã thay bằng số giả.
+const tpbOut = '(TPBank): 14/11/26;10:36\nTK: xxxx123456\nPS:-2.000VND\nSD KHA DUNG: 1.690.775VND\nND: test app tu dong\nSO GD: 272CTMB000000';
+const tpbIn = '(TPBank): 14/11/26;10:36\nTK: xxxx123456\nPS:+2.000VND\nSD: 9.519.405VND\nSD KHA DUNG: 9.519.405VND\nND: test app tu dong\nSO GD: 272CTMB000001';
+const tpbCard = '(TPBank):\n14.11.26; 08:22\nTHE TIN DUNG SO 4665***7329\nPS: -39,000 VND\nND: GIAO DICH TAI PAYOO-HIGHLANDS 50023, VN\nHM CON LAI: 45,985,964 VND\nXIN CAM ON!';
 const otpSms = 'Ma OTP cua quy khach la 123456. KHONG chia se ma nay. Vietcombank';
 
 final catalog = InstitutionCatalog.fromJson(File('assets/institutions.json').readAsStringSync());
@@ -43,6 +47,19 @@ void main() {
       final r = parseNotification('TK 1234 +120,000VND. ND: SHOPEE HOAN TIEN DON 123') as Parsed;
       expect(r.txn.isRefund, isTrue);
       expect(r.txn.direction, 1);
+    });
+    test('mẫu thật TPBank (đã che số TK): số tiền, chiều, số dư, nội dung, thẻ tín dụng', () {
+      final tpb = catalog.byId('tpbank');
+      final a = parseNotification(tpbOut, inst: tpb) as Parsed;
+      expect((a.txn.amount, a.txn.direction, a.txn.balance, a.txn.last4, a.txn.content), (2000, -1, 1690775, '3456', 'test app tu dong'));
+      final b = parseNotification(tpbIn, inst: tpb) as Parsed;
+      expect((b.txn.amount, b.txn.direction, b.txn.balance), (2000, 1, 9519405));
+      final c = parseNotification(tpbCard, inst: tpb) as Parsed;
+      expect((c.txn.amount, c.txn.direction, c.txn.last4, c.txn.balance), (39000, -1, '7329', null));
+      expect(c.txn.content, 'GIAO DICH TAI PAYOO-HIGHLANDS 50023, VN');
+      expect(c.txn.merchant, startsWith('PAYOO-HIGHLANDS'));
+      expect(parseNotification('Quý khách vừa thực hiện Chuyển tiền thành công! Vui lòng xem chi tiết giao dịch.', inst: tpb),
+          isA<Unrecognized>());
     });
     test('tên người có "TRUONG" không làm đảo chiều', () {
       final r = parseNotification('Bạn đã nhận 500.000đ từ LE VAN TRUONG') as Parsed;
@@ -123,6 +140,36 @@ void main() {
       expect(await db.getSetting('reconcile_hint:$vcb'), isNull);
       await repo.setStatus(t.id, 'confirmed');
       expect((await repo.walletBalances())[vcb], 1955000);
+    });
+
+    test('chưa có ví TPBank: tự tạo ví (số dư khớp ngân hàng), thẻ tín dụng thành ví riêng', () async {
+      const pkg = 'com.tpb.mb.gprsandroid';
+      final wl = {...whitelist, pkg};
+      Future<IngestOutcome> tp(String text, DateTime at, {Set<String>? only}) =>
+          pipe.ingest(RawInput(source: 'notification', package: pkg, text: text, receivedAt: at), whitelist: wl, onlyInstitutions: only);
+      // Bản miễn phí đã đủ 3 ví (VCB, MoMo, Tiền mặt): không tự tạo ví thứ 4, giao dịch vào "Chưa xác định".
+      expect((await tp(tpbOut, t0) as Skipped).reason, 'no_wallet');
+      // Bản miễn phí chỉ 1 nguồn: TPBank không phải nguồn được chọn → bỏ qua.
+      expect((await tp(tpbOut, t0, only: {'vcb'}) as Skipped).reason, 'pro_limit');
+      await db.delete(db.rawEvents).go();
+      await db.setSetting('pro_owned', 'lifetime');
+      final a = await tp(tpbOut, t0) as Created;
+      final ta = await (db.select(db.transactions)..where((x) => x.id.equals(a.txnId))).getSingle();
+      final wa = await (db.select(db.wallets)..where((x) => x.id.equals(ta.walletId))).getSingle();
+      expect((wa.name, wa.type, wa.accountLast4), ('TPBank', 'bank', '3456'));
+      await repo.setStatus(ta.id, 'confirmed');
+      expect((await repo.walletBalances())[wa.id], 1690775); // khớp "SD KHA DUNG"
+
+      final c = await tp(tpbCard, t0.add(const Duration(hours: 1))) as Created;
+      final tc = await (db.select(db.transactions)..where((x) => x.id.equals(c.txnId))).getSingle();
+      final wc = await (db.select(db.wallets)..where((x) => x.id.equals(tc.walletId))).getSingle();
+      expect((wc.name, wc.type, wc.accountLast4), ('TPBank thẻ tín dụng', 'credit', '7329'));
+      final cats = await repo.allCategories();
+      expect(cats.firstWhere((x) => x.id == tc.categoryId).name, 'Cà phê');
+
+      // Thông báo sau của cùng tài khoản dùng lại ví đã tạo.
+      final b = await tp(tpbIn, t0.add(const Duration(hours: 2))) as Created;
+      expect((await (db.select(db.transactions)..where((x) => x.id.equals(b.txnId))).getSingle()).walletId, wa.id);
     });
 
     test('ngoài whitelist / OTP: không lưu gì', () async {

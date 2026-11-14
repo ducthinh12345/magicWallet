@@ -3,6 +3,7 @@ import 'package:magic_wallet/capture/statement_import.dart';
 import 'package:magic_wallet/core/money.dart';
 import 'package:magic_wallet/core/periods.dart';
 import 'package:magic_wallet/data/repo.dart';
+import 'package:magic_wallet/ui/google_ui.dart' show fmtStamp;
 
 void main() {
   group('parseAmountInput (US-01 AC4)', () {
@@ -113,5 +114,12 @@ void main() {
       final out = mapRows(rows.skip(1).toList(), m);
       expect([for (final r in out) r.amount * r.direction], [-120000, 50000]);
     });
+  });
+
+  test('fmtStamp: chuỗi rỗng/hỏng không làm vỡ giao diện (lỗi màn đỏ khi đồng bộ)', () {
+    expect(fmtStamp(''), 'chưa');
+    expect(fmtStamp(null), 'chưa');
+    expect(fmtStamp('abc'), 'chưa');
+    expect(fmtStamp('2026-11-14T10:27:05.123'), '2026-11-14 10:27');
   });
 }

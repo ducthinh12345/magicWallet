@@ -152,6 +152,41 @@ void main() {
     expect(() => sync.run(), throwsA(isA<SchemaMismatch>()));
   });
 
+  test('2 máy cùng một Sheet: máy mới nhận giao dịch của máy cũ và ngược lại; chờ duyệt không lên Sheet', () async {
+    final cats = await repo.allCategories();
+    final cafe = cats.firstWhere((c) => c.name == 'Cà phê').id;
+    final a = await repo.saveTxn(TransactionsCompanion.insert(
+        walletId: w, type: 'expense', amount: 45000, amountBase: 45000, occurredAt: DateTime(2026, 11, 11, 9), categoryId: Value(cafe)));
+    await repo.saveTxn(TransactionsCompanion.insert(
+        walletId: w, type: 'expense', amount: 99000, amountBase: 99000, occurredAt: DateTime(2026, 11, 11, 10), status: const Value('pending')));
+    await sync.run();
+    expect(sheet.tab(tabTxn).length, 2); // tiêu đề + 1 dòng đã xác nhận
+
+    // Máy B: DB trống, cùng Sheet.
+    final dbB = AppDb(NativeDatabase.memory());
+    final repoB = Repo(dbB);
+    final syncB = SheetsSync(dbB, repoB, sheet);
+    final r = await syncB.run();
+    expect(r.pulled, 1);
+    final tB = await (dbB.select(dbB.transactions)..where((x) => x.id.equals(a))).getSingle();
+    final catsB = await repoB.allCategories();
+    expect((tB.amount, tB.status, catsB.firstWhere((c) => c.id == tB.categoryId).name), (45000, 'confirmed', 'Cà phê'));
+    final wB = (await dbB.select(dbB.wallets).get()).single;
+    expect(wB.name, 'Tiền mặt');
+    expect((await repoB.walletBalances())[wB.id], 955000); // khớp số dư máy A
+    expect((await syncB.run()).pulled, 0); // không nhập trùng
+
+    // B ghi thêm → A nhận về.
+    final b = await repoB.saveTxn(TransactionsCompanion.insert(
+        walletId: wB.id, type: 'income', amount: 500000, amountBase: 500000, occurredAt: DateTime(2026, 11, 12)));
+    await syncB.run();
+    expect((await sync.run()).pulled, 1);
+    expect((await (db.select(db.transactions)..where((x) => x.id.equals(b))).getSingle()).walletId, w);
+    expect((await repo.walletBalances())[w], 1000000 - 45000 + 500000);
+    expect(sheet.tab(tabTxn).length, 3);
+    await dbB.close();
+  });
+
   test('sao lưu: mã hoá, mở bằng mật khẩu hoặc mã khôi phục, khôi phục đủ dữ liệu', () async {
     final id = await add(45000, note: 'cà phê');
     await repo.saveTxn(TransactionsCompanion(id: Value(id)), tags: ['sáng']);

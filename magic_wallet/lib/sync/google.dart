@@ -22,8 +22,11 @@ const googleScopes = [drive.DriveApi.driveFileScope, drive.DriveApi.driveAppdata
 /// --dart-define=GOOGLE_WEB_CLIENT_ID=... (web) và GOOGLE_SERVER_CLIENT_ID=... (Android, là client "Web application").
 const _webClientId = String.fromEnvironment('GOOGLE_WEB_CLIENT_ID');
 const _serverClientId = String.fromEnvironment('GOOGLE_SERVER_CLIENT_ID');
+// iOS: client loại "iOS" (bundle id vn.vimathuat.magicWallet); URL scheme đảo ngược đặt trong ios/Flutter/GoogleSignIn.xcconfig.
+const _iosClientId = String.fromEnvironment('GOOGLE_IOS_CLIENT_ID');
+bool get _isIOS => !kIsWeb && defaultTargetPlatform == TargetPlatform.iOS;
 
-bool get googleConfigured => kIsWeb ? _webClientId.isNotEmpty : _serverClientId.isNotEmpty;
+bool get googleConfigured => kIsWeb ? _webClientId.isNotEmpty : (_isIOS ? _iosClientId.isNotEmpty : _serverClientId.isNotEmpty);
 
 const _keepBackups = 30;
 
@@ -39,8 +42,8 @@ class GoogleService {
   Future<void> _init() async {
     if (_initialized) return;
     await GoogleSignIn.instance.initialize(
-      clientId: kIsWeb ? _webClientId : null,
-      serverClientId: kIsWeb ? null : _serverClientId,
+      clientId: kIsWeb ? _webClientId : (_isIOS ? _iosClientId : null),
+      serverClientId: kIsWeb || _isIOS ? null : _serverClientId,
     );
     _initialized = true;
   }
@@ -64,7 +67,9 @@ class GoogleService {
     final c = await _authClient(interactive: true);
     if (c == null) throw StateError('Chưa cấp quyền Google');
     if (await db.getSetting('sheets_id') == null) {
-      final (id, tabIds) = await createSpreadsheet(sheets.SheetsApi(c), drive.DriveApi(c));
+      // Máy thứ hai của cùng tài khoản: dùng lại Sheet đã có để mọi máy đồng bộ qua một file.
+      final (id, tabIds) =
+          await findSpreadsheet(sheets.SheetsApi(c), drive.DriveApi(c)) ?? await createSpreadsheet(sheets.SheetsApi(c), drive.DriveApi(c));
       await db.setSetting('sheets_id', id);
       await db.setSetting('sheets_tab_ids', jsonEncode(tabIds));
     }
@@ -84,17 +89,25 @@ class GoogleService {
     return id == null ? null : 'https://docs.google.com/spreadsheets/d/$id';
   }
 
-  Future<SheetsSync?> _syncer() async {
+  Future<SheetsSync?> _syncer({bool inbox = true}) async {
     final id = await db.getSetting('sheets_id');
     final c = await _authClient();
     if (id == null || c == null) return null;
     final tabIds = Map<String, int>.from(jsonDecode(await db.getSetting('sheets_tab_ids') ?? '{}'));
-    return SheetsSync(db, repo, GoogleSheetIO(sheets.SheetsApi(c), id, tabIds), pipeline: pipeline);
+    return SheetsSync(db, repo, GoogleSheetIO(sheets.SheetsApi(c), id, tabIds), pipeline: inbox ? pipeline : null);
   }
 
   /// Đồng bộ nếu đã kết nối; null nếu chưa kết nối hoặc chưa có quyền (không làm phiền người dùng).
-  Future<SyncResult?> sync({required Set<String> whitelist, required bool autoConfirm}) async {
-    final s = await _syncer();
+  Future<SyncResult?>? _running;
+
+  /// Mỗi lúc chỉ một lượt đồng bộ: bấm tay trúng lúc đồng bộ nền thì dùng chung lượt đang chạy,
+  /// tránh đẩy trùng dòng lên Sheet.
+  /// `inbox`: kéo email hoá đơn từ tab Hộp thư (Pro).
+  Future<SyncResult?> sync({required Set<String> whitelist, required bool autoConfirm, bool inbox = true}) =>
+      _running ??= _sync(whitelist, autoConfirm, inbox).whenComplete(() => _running = null);
+
+  Future<SyncResult?> _sync(Set<String> whitelist, bool autoConfirm, bool inbox) async {
+    final s = await _syncer(inbox: inbox);
     if (s == null) return null;
     try {
       return await s.run(whitelist: whitelist, autoConfirm: autoConfirm);

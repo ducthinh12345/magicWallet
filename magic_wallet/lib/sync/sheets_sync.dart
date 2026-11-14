@@ -101,7 +101,7 @@ class SheetsSync {
 
     final cats = await repo.allCategories();
     final catById = {for (final c in cats) c.id: c};
-    final wallets = {for (final w in await db.select(db.wallets).get()) w.id: w};
+    var wallets = {for (final w in await db.select(db.wallets).get()) w.id: w};
 
     // ---- Kéo về ----
     final sheet = await io.read(tabTxn);
@@ -131,6 +131,18 @@ class SheetsSync {
         t.id: t,
     };
 
+    // Dòng do máy khác (cùng tài khoản Google) ghi lên mà máy này chưa có → nhập về.
+    // Bỏ qua id từng đồng bộ rồi mất ở máy này (đã xoá hẳn sau 30 ngày) để không hồi sinh giao dịch đã xoá.
+    final createdWallets = <String>{};
+    for (final e in valuesOf.entries) {
+      if (locals.containsKey(e.key) || everSynced.contains(e.key) || pending.contains(e.key)) continue;
+      if (await _importRow(e.key, e.value, cats, wallets, createdWallets)) result.pulled++;
+    }
+    if (createdWallets.isNotEmpty) {
+      await _fixOpeningBalances(createdWallets);
+      wallets = {for (final w in await db.select(db.wallets).get()) w.id: w};
+    }
+
     for (final e in valuesOf.entries) {
       final t = locals[e.key];
       if (t == null || t.deletedAt != null) continue;
@@ -146,7 +158,7 @@ class SheetsSync {
     }
     for (final id in everSynced) {
       final t = locals[id];
-      if (t != null && t.deletedAt == null && !rowOf.containsKey(id) && !pending.contains(id)) {
+      if (t != null && t.deletedAt == null && t.status == 'confirmed' && !rowOf.containsKey(id) && !pending.contains(id)) {
         result.missingOnSheet.add(id);
       }
     }
@@ -161,7 +173,8 @@ class SheetsSync {
     final deletes = <int>[];
     for (final id in toPush) {
       final t = fresh[id];
-      if (t == null || t.deletedAt != null) {
+      // Sheet chỉ chứa giao dịch đã xác nhận; chờ duyệt/bỏ qua mà lỡ có dòng thì gỡ khỏi Sheet.
+      if (t == null || t.deletedAt != null || t.status != 'confirmed') {
         if (rowOf[id] != null) deletes.add(rowOf[id]!);
         continue;
       }
@@ -245,6 +258,64 @@ class SheetsSync {
     ];
     row.add(rowSig(row));
     return [for (final v in row) safeCell(v)];
+  }
+
+  /// Tạo giao dịch từ một dòng Sheet. Ví/danh mục khớp theo tên (mỗi máy có id riêng); thiếu ví thì tạo.
+  Future<bool> _importRow(String id, List<Object?> row, List<Category> cats, Map<String, Wallet> wallets, Set<String> created) async {
+    final date = _parseDate(row.length > 1 ? row[1] : null);
+    final amount = int.tryParse(_cell(row, 3).replaceAll(RegExp(r'[^\d]'), ''));
+    final type = typeLabel.entries.where((e) => e.value == _cell(row, 2)).firstOrNull?.key;
+    if (date == null || amount == null || amount <= 0 || type == null) return false;
+
+    Future<String> walletId(String name) async {
+      final n = name.trim().isEmpty ? 'Ví từ Sheet' : name.trim();
+      final w = wallets.values.where((w) => w.name == n && w.deletedAt == null).firstOrNull;
+      if (w != null) return w.id;
+      final nw = await db.into(db.wallets).insertReturning(WalletsCompanion.insert(name: n, type: 'bank'));
+      wallets[nw.id] = nw;
+      created.add(nw.id);
+      return nw.id;
+    }
+
+    final names = _cell(row, 4).split(' → ');
+    final from = await walletId(names.first);
+    final to = type == 'transfer' && names.length > 1 ? await walletId(names[1]) : null;
+    final rootName = _cell(row, 5), subName = _cell(row, 6);
+    final root = cats.where((c) => c.parentId == null && c.name == rootName).firstOrNull;
+    final sub = root == null ? null : cats.where((c) => c.parentId == root.id && c.name == subName).firstOrNull;
+    final source = sourceLabel.entries.where((e) => e.value == _cell(row, 9)).firstOrNull?.key ?? 'manual';
+    await db.into(db.transactions).insert(TransactionsCompanion.insert(
+      id: Value(id),
+      walletId: from,
+      toWalletId: Value(to),
+      type: type,
+      amount: amount,
+      amountBase: amount,
+      categoryId: Value(type == 'transfer' ? null : (sub?.id ?? root?.id)),
+      occurredAt: date,
+      note: Value(_cell(row, 7)),
+      source: Value(source),
+    ));
+    final tags = _cell(row, 8).split(',').map((s) => s.trim()).where((s) => s.isNotEmpty).toList();
+    if (tags.isNotEmpty) await repo.saveTxn(TransactionsCompanion(id: Value(id)), tags: tags);
+    // Đánh dấu đã đồng bộ: dòng đến từ Sheet, không cần đẩy ngược lên.
+    await (db.delete(db.syncLog)..where((l) => l.entityId.equals(id))).go();
+    await db.into(db.syncLog).insert(SyncLogCompanion.insert(
+        entity: 'transaction', entityId: id, op: 'insert', changedAt: DateTime.now(), syncedAt: Value(DateTime.now())));
+    return true;
+  }
+
+  /// Ví vừa tạo từ Sheet: đặt số dư đầu sao cho số dư app tính khớp cột "Số dư" ở tab Ví.
+  Future<void> _fixOpeningBalances(Set<String> walletIds) async {
+    final sheetBal = {for (final r in (await io.read(tabWallet)).skip(1)) _cell(r, 0): int.tryParse(_cell(r, 2))};
+    final computed = await repo.walletBalances();
+    for (final id in walletIds) {
+      final w = await (db.select(db.wallets)..where((x) => x.id.equals(id))).getSingle();
+      final target = sheetBal[w.name];
+      if (target == null) continue;
+      await (db.update(db.wallets)..where((x) => x.id.equals(id)))
+          .write(WalletsCompanion(openingBalance: Value(target - (computed[id] ?? 0))));
+    }
   }
 
   Future<void> _applySheetRow(Txn t, List<Object?> row, List<Category> cats) async {

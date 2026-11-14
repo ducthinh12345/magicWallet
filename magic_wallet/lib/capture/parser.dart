@@ -89,10 +89,13 @@ final _sensitive = RegExp(
 final _signedAmount = RegExp(r'([+\-−])\s?(\d{1,3}(?:[.,]\d{3})+|\d+)\s?(?:VND|VNĐ|đ|d)(?![A-Za-z0-9])', caseSensitive: false);
 final _plainAmount = RegExp(r'(\d{1,3}(?:[.,]\d{3})+|\d{4,})\s?(?:VND|VNĐ|đ|d)(?![A-Za-z0-9])', caseSensitive: false);
 final _balance = RegExp(r'(?:\bSD|S[ốo] d[ưu])[^\d\n]{0,20}?(\d{1,3}(?:[.,]\d{3})+|\d+)', caseSensitive: false);
-final _account = RegExp(r'(?:TK|T[àa]i kho[ảa]n|Account)\s*[:#]?\s*([\dxX*]{2,}\d{3,})', caseSensitive: false);
-final _content = RegExp(r'(?:ND|N[ộo]i dung|Noi dung|Description)\s*[:\-]?\s*(.+)$', caseSensitive: false, multiLine: true);
+// "THE TIN DUNG SO 4665***7329": thẻ cũng là một "tài khoản" để gán ví.
+final _account = RegExp(r'(?:TK|T[àa]i kho[ảa]n|Account|TH[EẺ](?: TIN D[UỤ]NG)?(?: S[OỐ])?)\s*[:#]?\s*([\dxX*]{2,}\d{3,})',
+    caseSensitive: false);
+// (?<![A-Za-z]): không nhận nhầm "ND" trong "VND" ngay trước xuống dòng.
+final _content = RegExp(r'(?<![A-Za-z])(?:ND|N[ộo]i dung|Noi dung|Description)\s*[:\-]?\s*(.+)$', caseSensitive: false, multiLine: true);
 final _merchant = RegExp(
-  r'(?:t[ạa]i|cho|to|at)\s+([A-Z0-9][\w&.\- ]{2,40}?)(?:\s*[.,;|]|\s+l[úu]c|\s+v[àa]o|$)',
+  r'(?:[tT][ạaẠA][iI]|[cC][hH][oO]|to|at)\s+([A-Z0-9][\w&.\- ]{2,40}?)(?:\s*[.,;|]|\s+l[úu]c|\s+v[àa]o|$)',
   caseSensitive: true,
 );
 final _refund = RegExp(r'ho[àa]n ti[ềe]n|refund', caseSensitive: false);

@@ -37,6 +37,7 @@ class _GoogleScreenState extends State<GoogleScreen> {
   Future<void> _syncNow() => _run(() async {
     final r = await s.google.sync(whitelist: await s.whitelist(), autoConfirm: await s.flag('auto_confirm'));
     await s.db.setSetting('sheets_attention', '');
+    await s.db.setSetting('sheets_last_error', ''); // lượt tay thành công thì xoá lỗi cũ của lượt nền
     setState(() => last = r);
     if (mounted && r != null) {
       toast(context, 'Đã đẩy ${r.pushed}, kéo về ${r.pulled}${r.inbox > 0 ? ', ${r.inbox} email' : ''}');
@@ -54,7 +55,7 @@ class _GoogleScreenState extends State<GoogleScreen> {
           return ListView(
             padding: const EdgeInsets.all(16),
             children: [
-              if (busy) const LinearProgressIndicator(),
+              SizedBox(height: 4, child: busy ? const LinearProgressIndicator() : null),
               if (!googleConfigured)
                 const Card(
                   child: ListTile(
@@ -88,7 +89,7 @@ class _GoogleScreenState extends State<GoogleScreen> {
                   builder: (context, t) => ListTile(
                     leading: const Icon(Icons.cloud_done_outlined),
                     title: const Text('Đã kết nối'),
-                    subtitle: Text('Đồng bộ cuối: ${t.data == null ? 'chưa' : t.data!.substring(0, 16).replaceAll('T', ' ')}'),
+                    subtitle: Text('Đồng bộ cuối: ${fmtStamp(t.data)}'),
                   ),
                 ),
                 StreamBuilder<String?>(
@@ -323,7 +324,7 @@ class _BackupSectionState extends State<_BackupSection> {
             return Column(
               crossAxisAlignment: CrossAxisAlignment.stretch,
               children: [
-                if (busy) const LinearProgressIndicator(),
+                SizedBox(height: 4, child: busy ? const LinearProgressIndicator() : null),
                 const Text('Mã hoá đầu-cuối bằng mật khẩu của bạn (Argon2id + AES-256-GCM). Google cũng không đọc được.'),
                 const SizedBox(height: 8),
                 if (!enabled) FilledButton(onPressed: busy ? null : _enable, child: const Text('Bật sao lưu')),
@@ -333,7 +334,7 @@ class _BackupSectionState extends State<_BackupSection> {
                       stream: s.db.watchSetting('backup_last'),
                       builder: (context, l) => Text(
                         'Tự động hằng ngày lên Drive, giữ 30 bản. Lần cuối: '
-                        '${l.data == null ? 'chưa' : l.data!.substring(0, 16).replaceAll('T', ' ')}',
+                        '${fmtStamp(l.data)}',
                       ),
                     ),
                   Wrap(
@@ -409,4 +410,12 @@ class _BackupSectionState extends State<_BackupSection> {
     );
     if (id != null) await _restore(await s.google.downloadBackup(id));
   }
+}
+
+/// Thời điểm lưu dạng ISO → "yyyy-MM-dd HH:mm"; rỗng hoặc hỏng thì "chưa" thay vì làm vỡ giao diện.
+String fmtStamp(String? iso) {
+  final d = DateTime.tryParse(iso ?? '');
+  if (d == null) return 'chưa';
+  String two(int n) => n.toString().padLeft(2, '0');
+  return '${d.year}-${two(d.month)}-${two(d.day)} ${two(d.hour)}:${two(d.minute)}';
 }
