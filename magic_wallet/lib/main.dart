@@ -67,6 +67,8 @@ ThemeData appTheme(Brightness b) {
     appBarTheme: AppBarTheme(
       backgroundColor: Colors.transparent,
       surfaceTintColor: Colors.transparent,
+      // Nền trong suốt khiến Flutter đoán nhầm là nền tối → chữ thanh trạng thái trắng trên nền sáng (thấy rõ trên iOS).
+      systemOverlayStyle: light ? SystemUiOverlayStyle.dark : SystemUiOverlayStyle.light,
       centerTitle: false,
       titleTextStyle: TextStyle(fontSize: 22, fontWeight: FontWeight.w800, color: scheme.onSurface),
     ),
